@@ -1,0 +1,188 @@
+openapi: 3.1.0
+info:
+  title: Agent Result Persistence API
+  version: 1.0.0
+  description: Persists a schema-validated result with server-verified idempotency.
+servers:
+  - url: https://YOUR-FUNCTION-APP.azurewebsites.net/api
+paths:
+  /pcr-results:
+    post:
+      operationId: save_agent_result
+      summary: Save one completed agent result
+      security:
+        - entraBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersistenceRequest"
+      responses:
+        "201":
+          description: Result committed to PostgreSQL.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistenceSuccess"
+        "200":
+          description: Identical request already committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersistenceSuccess"
+        "400":
+          description: Invalid authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Entra access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Required caller permission is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: request_id was previously used with a different payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Configured request size limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Request validation or canonical payload hash failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: PostgreSQL is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  securitySchemes:
+    entraBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Entra access token for the configured API audience and scope or app role.
+  schemas:
+    AgentResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, result]
+      properties:
+        schema_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+        result:
+          type: object
+          additionalProperties: true
+        summary:
+          type: [string, "null"]
+          maxLength: 20000
+        warnings:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+    PersistenceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - user_input
+        - result_json
+        - agent_name
+        - prompt_hash
+        - schema_version
+        - payload_hash
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        user_input:
+          type: string
+          minLength: 1
+          maxLength: 100000
+        result_json:
+          $ref: "#/components/schemas/AgentResult"
+        agent_name:
+          type: string
+          maxLength: 128
+        agent_version:
+          type: [string, "null"]
+          maxLength: 128
+        prompt_version:
+          type: [string, "null"]
+          maxLength: 512
+        prompt_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        schema_version:
+          type: string
+          maxLength: 64
+        metadata:
+          type: [object, "null"]
+          additionalProperties: true
+        payload_hash:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        duration_ms:
+          type: [integer, "null"]
+          minimum: 0
+        input_tokens:
+          type: [integer, "null"]
+          minimum: 0
+        output_tokens:
+          type: [integer, "null"]
+          minimum: 0
+        provider_response_id:
+          type: [string, "null"]
+          maxLength: 512
+    PersistenceSuccess:
+      type: object
+      required: [success, interaction_id, request_id, status, duplicate]
+      properties:
+        success:
+          const: true
+        interaction_id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+        status:
+          const: completed
+        duplicate:
+          type: boolean
+    Error:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+

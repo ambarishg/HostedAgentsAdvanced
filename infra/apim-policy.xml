@@ -1,0 +1,19 @@
+<policies>
+  <inbound>
+    <base />
+    <rate-limit-by-key
+      calls="{{PERSISTENCE_API_CALLS_PER_MINUTE}}"
+      renewal-period="60"
+      counter-key="@(context.Principal?.Id ?? context.Request.IpAddress)" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+
