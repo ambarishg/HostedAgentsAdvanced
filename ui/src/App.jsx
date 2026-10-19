@@ -1,9 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
-const defaultPersistUrl = import.meta.env.VITE_PERSISTENCE_API_URL || '/api/pcr-results';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
-const savedTheme = window.localStorage.getItem('hosted-agents-theme');
 
 const createRequestBody = (userInput, requestId, batchMode) => ({
   request_id: requestId,
@@ -38,30 +36,20 @@ const normalizeAgentResponse = (payload) => {
 };
 
 function App() {
-  const [theme, setTheme] = useState(savedTheme === 'light' ? 'light' : 'dark');
-  const [userInput, setUserInput] = useState('Summarize the main benefit of a transactional database write.');
-  const [batchMode, setBatchMode] = useState(false);
-  const [requestId, setRequestId] = useState('');
+  const [userInput, setUserInput] = useState('');
   const [agentUrl, setAgentUrl] = useState(defaultAgentUrl);
-  const [persistUrl, setPersistUrl] = useState(defaultPersistUrl);
   const [historyUrl, setHistoryUrl] = useState(defaultHistoryUrl);
   const [historyToken, setHistoryToken] = useState('');
-  const [page, setPage] = useState('workspace');
+  const [page, setPage] = useState('home');
   const [status, setStatus] = useState('idle');
-  const [message, setMessage] = useState('Ready to submit a new agent request.');
+  const [message, setMessage] = useState('Your agent is ready when you are.');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [recentRequests, setRecentRequests] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [historyError, setHistoryError] = useState('');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [hasMoreInteractions, setHasMoreInteractions] = useState(false);
-
-  const requestLabel = useMemo(() => {
-    if (requestId) return requestId;
-    return 'auto-generated';
-  }, [requestId]);
 
   const loadInteractions = async (offset = 0, append = false) => {
     setIsHistoryLoading(true);
@@ -73,12 +61,9 @@ function App() {
 
     try {
       const separator = historyUrl.includes('?') ? '&' : '?';
-      const response = await fetch(
-        `${historyUrl}${separator}limit=100&offset=${offset}`,
-        {
-          headers: historyToken ? { Authorization: `Bearer ${historyToken}` } : {},
-        },
-      );
+      const response = await fetch(`${historyUrl}${separator}limit=100&offset=${offset}`, {
+        headers: historyToken ? { Authorization: `Bearer ${historyToken}` } : {},
+      });
       const rawText = await response.text();
       if (!response.ok) {
         throw new Error(rawText || `History request failed with status ${response.status}.`);
@@ -97,32 +82,27 @@ function App() {
     }
   };
 
-  const openHistory = () => {
-    setPage('history');
+  const openInteractions = () => {
+    setPage('interactions');
     loadInteractions();
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event, batchMode = false) => {
     event.preventDefault();
 
     const trimmedInput = userInput.trim();
     if (!batchMode && !trimmedInput) {
       setStatus('error');
-      setError('Please enter a request before submitting.');
+      setError('Enter a request before submitting.');
       setMessage('User input is required.');
       setResult(null);
       return;
     }
 
-    const nextRequestId = requestId || crypto.randomUUID();
-    setRequestId(nextRequestId);
+    const requestId = crypto.randomUUID();
     setStatus('loading');
     setIsLoading(true);
-    setMessage(
-      batchMode
-        ? 'Submitting configured batch input to the hosted agent...'
-        : 'Submitting request to the hosted agent...',
-    );
+    setMessage(batchMode ? 'Processing the configured batch input…' : 'Sending your request to the agent…');
     setError('');
     setResult(null);
 
@@ -130,320 +110,203 @@ function App() {
       const response = await fetch(agentUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createRequestBody(trimmedInput, nextRequestId, batchMode)),
+        body: JSON.stringify(createRequestBody(trimmedInput, requestId, batchMode)),
       });
 
       const rawText = await response.text();
       if (!response.ok) {
-        const detail = rawText || `Request failed with status ${response.status}.`;
-        throw new Error(detail);
+        throw new Error(rawText || `Request failed with status ${response.status}.`);
       }
 
       const parsed = normalizeAgentResponse(rawText || '{}');
-
-      if (!parsed || Object.keys(parsed).length === 0) {
+      if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) {
         throw new Error('The backend returned an empty response.');
       }
 
       const finalResult = {
         ...parsed,
-        request_id: parsed.request_id || nextRequestId,
+        request_id: parsed.request_id || requestId,
       };
 
       setResult(finalResult);
       setStatus('success');
-      setMessage(`Request ${nextRequestId} completed successfully.`);
-
-      setRecentRequests((current) => [
-        {
-          requestId: nextRequestId,
-          summary: finalResult.summary || finalResult.result?.summary || 'Request completed',
-          status: finalResult.status || 'completed',
-          at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-        ...current,
-      ].slice(0, 5));
+      setMessage('Your request is complete.');
     } catch (fetchError) {
       setStatus('error');
       setError(fetchError.message || 'Unable to contact the hosted agent service.');
-      setMessage('The request could not be processed. Please check the backend and try again.');
+      setMessage('The request could not be processed. Check the service and try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="app-shell" data-theme={theme}>
-      <aside className="sidebar">
-        <div>
-          <div className="brand-mark" aria-hidden="true">H</div>
-          <p className="eyebrow">Hosted agents</p>
-          <h1>Console</h1>
-          <p className="brand-caption">A workspace for your AI operations</p>
-        </div>
-
-        <div className="status-card status-card--accent">
-          <span className="status-dot" data-status={status} />
-          <div>
-            <strong>Current status</strong>
-            <p>{status === 'success' ? 'Request completed' : status === 'loading' ? 'Processing' : status === 'error' ? 'Attention required' : 'Ready'}</p>
-          </div>
-        </div>
-
-        <div className="config-stack">
-          <label>
-            Agent endpoint
-            <input value={agentUrl} onChange={(event) => setAgentUrl(event.target.value)} />
-          </label>
-          <label>
-            Persistence endpoint
-            <input value={persistUrl} onChange={(event) => setPersistUrl(event.target.value)} />
-          </label>
-          <label>
-            Interaction history endpoint
-            <input value={historyUrl} onChange={(event) => setHistoryUrl(event.target.value)} />
-          </label>
-          <label>
-            Persistence API access token
-            <input
-              type="password"
-              autoComplete="off"
-              value={historyToken}
-              onChange={(event) => setHistoryToken(event.target.value)}
-              placeholder="Paste a short-lived Entra token"
-            />
-          </label>
-        </div>
-
+    <div className="app-shell">
+      <header className="site-header">
+        <a className="brand" href="#home" onClick={() => setPage('home')}>
+          <span className="brand-mark" aria-hidden="true">H</span>
+          <span>Hosted agents</span>
+        </a>
         <nav className="page-navigation" aria-label="Main navigation">
           <button
             type="button"
-            className={page === 'workspace' ? 'page-navigation__active' : ''}
-            aria-current={page === 'workspace' ? 'page' : undefined}
-            onClick={() => setPage('workspace')}
+            className={page === 'home' ? 'page-navigation__active' : ''}
+            aria-current={page === 'home' ? 'page' : undefined}
+            onClick={() => setPage('home')}
           >
-            Request workspace
+            Home
           </button>
           <button
             type="button"
-            className={page === 'history' ? 'page-navigation__active' : ''}
-            aria-current={page === 'history' ? 'page' : undefined}
-            onClick={openHistory}
+            className={page === 'batch' ? 'page-navigation__active' : ''}
+            aria-current={page === 'batch' ? 'page' : undefined}
+            onClick={() => setPage('batch')}
           >
-            Agent Interaction History
+            Batch processing
+          </button>
+          <button
+            type="button"
+            className={page === 'interactions' ? 'page-navigation__active' : ''}
+            aria-current={page === 'interactions' ? 'page' : undefined}
+            onClick={openInteractions}
+          >
+            Agent interactions
           </button>
         </nav>
-      </aside>
+        <details className="settings">
+          <summary>Settings</summary>
+          <div className="settings-panel">
+            <label>
+              Agent endpoint
+              <input value={agentUrl} onChange={(event) => setAgentUrl(event.target.value)} />
+            </label>
+            <label>
+              Interaction history endpoint
+              <input value={historyUrl} onChange={(event) => setHistoryUrl(event.target.value)} />
+            </label>
+            <label>
+              History access token
+              <input
+                type="password"
+                autoComplete="off"
+                value={historyToken}
+                onChange={(event) => setHistoryToken(event.target.value)}
+                placeholder="Optional bearer token"
+              />
+            </label>
+          </div>
+        </details>
+      </header>
 
       <main className="main-panel">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">{page === 'history' ? 'Persistence records' : 'Request workspace'}</p>
-            <h2>{page === 'history' ? 'Agent Interaction History' : 'Submit a new hosted agent task'}</h2>
-            <p className="page-caption">
-              {page === 'history'
-                ? 'Review completed interactions retrieved from the Persistence API.'
-                : 'Send a task to your agent and review its response.'}
-            </p>
-          </div>
-          <div className="topbar-actions">
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={() => {
-                const nextTheme = theme === 'dark' ? 'light' : 'dark';
-                window.localStorage.setItem('hosted-agents-theme', nextTheme);
-                setTheme(nextTheme);
-              }}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            >
-              <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
-              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            </button>
-            {page === 'workspace' && <span className="request-pill">ID: {requestLabel}</span>}
-          </div>
-        </header>
-
-        {page === 'workspace' ? (
-          <>
-        <form className="request-form" onSubmit={handleSubmit}>
-          <label className="batch-mode-toggle">
-            <input
-              type="checkbox"
-              checked={batchMode}
-              onChange={(event) => setBatchMode(event.target.checked)}
-            />
-            Invoke using configured batch input
-          </label>
-          <p className="field-help" role="status">
-            {batchMode
-              ? 'Batch mode uses the input file or blob configured on the agent. The user input below will not be sent.'
-              : 'Single-request mode sends the user input below to the agent.'}
-          </p>
-
-          <label className="field-label" htmlFor="request-id">
-            Request ID (optional)
-          </label>
-          <input
-            id="request-id"
-            value={requestId}
-            onChange={(event) => setRequestId(event.target.value)}
-            placeholder="Leave blank to auto-generate"
-          />
-
-          <label className="field-label" htmlFor="user-input">
-            User request
-          </label>
-          <textarea
-            id="user-input"
-            value={userInput}
-            onChange={(event) => setUserInput(event.target.value)}
-            disabled={batchMode}
-            rows={8}
-            placeholder={batchMode ? 'Not used for batch processing' : 'Describe the task for the hosted agent'}
-          />
-
-          <div className="button-row">
-            <button type="submit" disabled={isLoading}>
-              {isLoading ? 'Submitting...' : 'Submit request'}
-            </button>
-            <button type="button" className="secondary" onClick={() => setUserInput('')}>
-              Clear
-            </button>
-          </div>
-        </form>
-
-        <section className="feedback-panel" aria-live="polite">
-          <div className="feedback-header">
-            <strong>Request feedback</strong>
-            <span className={`tag tag--${status}`}>{status}</span>
-          </div>
-          <p>{message}</p>
-          {error && <p className="error-message">{error}</p>}
-        </section>
-
-        <section className="results-panel">
-          <div className="section-heading">
-            <h3>Latest result</h3>
-          </div>
-
-          {result ? (
-            <div className="result-card">
-              <div className="result-grid">
-                <div>
-                  <span className="meta-label">Status</span>
-                  <p>{result.status || 'completed'}</p>
-                </div>
-                <div>
-                  <span className="meta-label">Request ID</span>
-                  <p>{result.request_id || requestLabel}</p>
-                </div>
-                <div>
-                  <span className="meta-label">Agent</span>
-                  <p>{result.agent_name || 'pcr-agent'}</p>
-                </div>
-                <div>
-                  <span className="meta-label">Duration</span>
-                  <p>{result.duration_ms ?? 0} ms</p>
-                </div>
-              </div>
-
-              <div className="result-content">
-                <div>
-                  <h4>Summary</h4>
-                  <p>{result.summary || 'No summary returned.'}</p>
-                </div>
-
-                <div>
-                  <h4>Structured result</h4>
-                  <pre>{JSON.stringify(result.result || result, null, 2)}</pre>
-                </div>
-
-                {Array.isArray(result.warnings) && result.warnings.length > 0 && (
-                  <div>
-                    <h4>Warnings</h4>
-                    <ul>
-                      {result.warnings.map((warning, index) => (
-                        <li key={`${warning}-${index}`}>{warning}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+        {page === 'home' && (
+          <section className="page-content">
+            <div className="page-heading">
+              <p className="eyebrow">Home</p>
+              <h1>What can your agent help with?</h1>
+              <p>Enter a request and get a response from your hosted agent.</p>
             </div>
-          ) : (
-            <div className="empty-state">No result has been returned yet.</div>
-          )}
-        </section>
 
-        <section className="history-panel">
-          <div className="section-heading">
-            <h3>Recent requests</h3>
-          </div>
+            <form className="request-form" onSubmit={handleSubmit}>
+              <label htmlFor="user-input">Your request</label>
+              <textarea
+                id="user-input"
+                value={userInput}
+                onChange={(event) => setUserInput(event.target.value)}
+                rows={6}
+                placeholder="Describe what you need…"
+              />
+              <div className="form-footer">
+                <span>Request ID is generated automatically.</span>
+                <button type="submit" disabled={isLoading}>
+                  {isLoading ? 'Working…' : 'Submit request'}
+                </button>
+              </div>
+            </form>
 
-          {recentRequests.length === 0 ? (
-            <p className="empty-state small">Submit a request to begin tracking activity.</p>
-          ) : (
-            <ul className="history-list">
-              {recentRequests.map((item) => (
-                <li key={`${item.requestId}-${item.at}`}>
-                  <div>
-                    <strong>{item.requestId}</strong>
-                    <p>{item.summary}</p>
-                  </div>
-                  <span>{item.status}</span>
-                  <time>{item.at}</time>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-          </>
-        ) : (
-          <section className="interaction-history-panel" aria-live="polite">
-            <div className="section-heading">
-              <h3>Interactions</h3>
+            <ResponsePanel
+              status={status}
+              message={message}
+              error={error}
+              result={result}
+            />
+          </section>
+        )}
+
+        {page === 'batch' && (
+          <section className="page-content">
+            <div className="page-heading">
+              <p className="eyebrow">Batch processing</p>
+              <h1>Process a configured batch</h1>
+              <p>Run the input file or blob configured for your hosted agent.</p>
+            </div>
+            <form className="batch-card" onSubmit={(event) => handleSubmit(event, true)}>
+              <div className="batch-description">
+                <span className="batch-icon" aria-hidden="true">↗</span>
+                <div>
+                  <h2>Configured batch input</h2>
+                  <p>The agent will read its batch source. No request text is needed here.</p>
+                </div>
+              </div>
+              <button type="submit" disabled={isLoading}>
+                {isLoading ? 'Processing…' : 'Start batch'}
+              </button>
+            </form>
+            <ResponsePanel
+              status={status}
+              message={message}
+              error={error}
+              result={result}
+            />
+          </section>
+        )}
+
+        {page === 'interactions' && (
+          <section className="page-content">
+            <div className="page-heading page-heading--row">
+              <div>
+                <p className="eyebrow">Agent interactions</p>
+                <h1>Interaction history</h1>
+                <p>Review requests and results saved by the Persistence API.</p>
+              </div>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => loadInteractions()}
                 disabled={isHistoryLoading}
               >
-                {isHistoryLoading ? 'Loading...' : 'Refresh'}
+                {isHistoryLoading ? 'Loading…' : 'Refresh'}
               </button>
             </div>
-            {historyError && <p className="error-message">{historyError}</p>}
+
+            {historyError && <p className="error-message" role="alert">{historyError}</p>}
             {interactions.length === 0 && !isHistoryLoading ? (
               <p className="empty-state">
-                {historyError ? 'Interaction history could not be loaded.' : 'No interactions were found.'}
+                {historyError ? 'Interaction history could not be loaded.' : 'No interactions found yet.'}
               </p>
             ) : (
-              <div className="table-scroll">
-                <table className="interaction-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Request ID</th>
-                      <th scope="col">Agent Name</th>
-                      <th scope="col">User Input</th>
-                      <th scope="col">Result JSON</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {interactions.map((interaction) => (
-                      <tr key={interaction.request_id}>
-                        <td>{interaction.request_id}</td>
-                        <td>{interaction.agent_name}</td>
-                        <td>{interaction.user_input}</td>
-                        <td>
-                          <pre className="interaction-result">
-                            {JSON.stringify(interaction.result_json, null, 2) || 'No result recorded.'}
-                          </pre>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="interaction-list">
+                {interactions.map((interaction) => (
+                  <article className="interaction-card" key={interaction.request_id}>
+                    <div className="interaction-card__heading">
+                      <div>
+                        <span className="meta-label">Request ID</span>
+                        <strong>{interaction.request_id}</strong>
+                      </div>
+                      <span className="agent-name">{interaction.agent_name}</span>
+                    </div>
+                    <div className="interaction-card__body">
+                      <div>
+                        <h2>Request</h2>
+                        <p>{interaction.user_input || 'Configured batch input'}</p>
+                      </div>
+                      <div>
+                        <h2>Result</h2>
+                        <pre>{JSON.stringify(interaction.result_json, null, 2) || 'No result recorded.'}</pre>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             )}
             {hasMoreInteractions && (
@@ -453,13 +316,45 @@ function App() {
                 onClick={() => loadInteractions(interactions.length, true)}
                 disabled={isHistoryLoading}
               >
-                {isHistoryLoading ? 'Loading...' : 'Load more'}
+                {isHistoryLoading ? 'Loading…' : 'Load more'}
               </button>
             )}
           </section>
         )}
       </main>
     </div>
+  );
+}
+
+function ResponsePanel({ status, message, error, result }) {
+  return (
+    <section className="response-panel" aria-live="polite">
+      <div className="response-heading">
+        <div>
+          <p className="eyebrow">Agent response</p>
+          <h2>{status === 'success' ? 'Completed' : status === 'loading' ? 'In progress' : 'Response'}</h2>
+        </div>
+        <span className={`status-indicator status-indicator--${status}`}>{status}</span>
+      </div>
+      <p className="response-message">{message}</p>
+      {error && <p className="error-message" role="alert">{error}</p>}
+      {result && (
+        <div className="response-result">
+          <div className="result-meta">
+            <span><strong>Request ID</strong>{result.request_id}</span>
+            <span><strong>Agent</strong>{result.agent_name || 'Hosted agent'}</span>
+            <span><strong>Duration</strong>{result.duration_ms ?? '—'}{result.duration_ms != null && ' ms'}</span>
+          </div>
+          {result.summary && <p className="result-summary">{result.summary}</p>}
+          <pre>{JSON.stringify(result.result || result, null, 2)}</pre>
+          {Array.isArray(result.warnings) && result.warnings.length > 0 && (
+            <ul className="warning-list">
+              {result.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
