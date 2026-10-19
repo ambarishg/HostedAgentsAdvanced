@@ -10,6 +10,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -361,11 +362,114 @@ class HostedOrchestrator:
             credential.close()
 
     @staticmethod
+    def _open_local_csv(
+        file_path: Path,
+    ) -> tuple[io.TextIOWrapper, csv.DictReader, list[str] | None]:
+        file_handle = None
+        try:
+            file_handle = file_path.open(encoding="utf-8-sig", newline="")
+            sample = file_handle.read(8192)
+            file_handle.seek(0)
+            try:
+                delimiter = csv.Sniffer().sniff(sample, delimiters="\t,;|").delimiter
+            except csv.Error:
+                delimiter = ","
+            reader = csv.DictReader(file_handle, delimiter=delimiter)
+            return file_handle, reader, reader.fieldnames
+        except (OSError, ValueError) as exc:
+            if file_handle is not None:
+                file_handle.close()
+            raise AgentExecutionError(
+                "local_file_unavailable",
+                "The configured local input file could not be read.",
+                status_code=422,
+            ) from exc
+        except (UnicodeError, csv.Error) as exc:
+            if file_handle is not None:
+                file_handle.close()
+            raise AgentExecutionError(
+                "local_file_invalid",
+                "The configured local input file is not valid UTF-8 CSV.",
+                status_code=422,
+            ) from exc
+
+    @staticmethod
+    def _read_local_csv_record(reader: csv.DictReader) -> dict[str, Any] | None:
+        try:
+            return next(reader, None)
+        except OSError as exc:
+            raise AgentExecutionError(
+                "local_file_unavailable",
+                "The configured local input file could not be read.",
+                status_code=422,
+            ) from exc
+        except (UnicodeError, csv.Error) as exc:
+            raise AgentExecutionError(
+                "local_file_invalid",
+                "The configured local input file is not valid UTF-8 CSV.",
+                status_code=422,
+            ) from exc
+
+    @staticmethod
     def _normalize_text(value: Any) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
         return text or None
+
+    async def _process_batch_row(
+        self,
+        *,
+        row_number: int,
+        row_value: str | None,
+        source: str,
+        file_name: str,
+        value_column: str,
+        model_agent_factory: Any | None,
+        persistence_tool: PersistenceApiTool | None,
+        missing_value_code: str,
+    ) -> AgentExecutionResponse:
+        if row_value is None:
+            raise AgentExecutionError(
+                missing_value_code,
+                "A row is missing the configured data column.",
+                status_code=422,
+            )
+        request = ExternalRequest(
+            request_id=uuid4(),
+            user_input=row_value,
+            metadata={
+                "source": source,
+                "row_number": row_number,
+                "column_name": value_column,
+                **(
+                    {"blob_name": file_name} if source == "blob_batch" else {"file_name": file_name}
+                ),
+            },
+        )
+        if len(request.user_input) > self._context.settings.max_input_chars:
+            raise AgentExecutionError(
+                "input_too_large",
+                "The batch row exceeds the configured input size limit.",
+                status_code=413,
+            )
+        row_context = RequestContext(
+            request=request,
+            prompt=self._context.prompt,
+            started_at=time.monotonic(),
+            settings=self._context.settings,
+        )
+        agent = None
+        if model_agent_factory is not None:
+            candidate = model_agent_factory(row_context)
+            if asyncio.iscoroutine(candidate):
+                candidate = await candidate
+            agent = candidate
+        return await execute_request(
+            row_context,
+            model_agent=agent,
+            persistence_tool=persistence_tool,
+        )
 
     @classmethod
     def _parse_blob_rows(
@@ -435,6 +539,89 @@ class HostedOrchestrator:
             normalized_rows.append({"value": cls._normalize_text(record.get(value_column))})
         return normalized_rows
 
+    async def process_local_file_rows(
+        self,
+        *,
+        file_path: str | Path,
+        value_column: str,
+        model_agent_factory: Any | None = None,
+        persistence_tool: PersistenceApiTool | None = None,
+        raise_on_error: bool = False,
+    ) -> list[AgentExecutionResponse]:
+        self.last_errors = []
+        file_handle, reader, fieldnames = await asyncio.to_thread(
+            self._open_local_csv, Path(file_path)
+        )
+        file_name = Path(file_path).name
+        try:
+            if not fieldnames:
+                raise AgentExecutionError(
+                    "local_file_empty",
+                    "The configured local input file has no CSV header.",
+                    status_code=422,
+                )
+            if value_column not in fieldnames:
+                raise AgentExecutionError(
+                    "local_file_missing_column",
+                    "The local input file is missing a required column.",
+                    status_code=422,
+                )
+
+            responses: list[AgentExecutionResponse] = []
+            row_number = 0
+            record = await asyncio.to_thread(self._read_local_csv_record, reader)
+            while record is not None:
+                row_number += 1
+                try:
+                    response = await self._process_batch_row(
+                        row_number=row_number,
+                        row_value=self._normalize_text(record.get(value_column)),
+                        source="local_file_batch",
+                        file_name=file_name,
+                        value_column=value_column,
+                        model_agent_factory=model_agent_factory,
+                        persistence_tool=persistence_tool,
+                        missing_value_code="local_file_missing_value",
+                    )
+                    responses.append(response)
+                except AgentExecutionError as exc:
+                    logger.warning(
+                        "Local file row execution failed",
+                        extra={
+                            "file_name": file_name,
+                            "row_number": row_number,
+                            "error_code": exc.code,
+                        },
+                    )
+                    self.last_errors.append(
+                        {"row_number": row_number, "error": str(exc), "code": exc.code}
+                    )
+                    if raise_on_error:
+                        raise
+                except Exception as exc:  # pragma: no cover - defensive path
+                    error = AgentExecutionError(
+                        "local_file_row_failed",
+                        f"Failed to process local file row {row_number}: {exc}",
+                        status_code=502,
+                    )
+                    logger.exception(
+                        "Local file row execution failed",
+                        extra={
+                            "file_name": file_name,
+                            "row_number": row_number,
+                            "error_code": error.code,
+                        },
+                    )
+                    self.last_errors.append(
+                        {"row_number": row_number, "error": str(error), "code": error.code}
+                    )
+                    if raise_on_error:
+                        raise error from exc
+                record = await asyncio.to_thread(self._read_local_csv_record, reader)
+            return responses
+        finally:
+            await asyncio.to_thread(file_handle.close)
+
     async def process_blob_rows(
         self,
         *,
@@ -442,7 +629,6 @@ class HostedOrchestrator:
         container: str,
         blob_name: str,
         value_column: str,
-        user_prompt: str | None = None,
         version_id: str | None = None,
         auth_mode: str = "default",
         model_agent_factory: Any | None = None,
@@ -456,13 +642,6 @@ class HostedOrchestrator:
             version_id=version_id,
             auth_mode=auth_mode,
         )
-        user_prompt = user_prompt or self._context.settings.user_prompt
-        if not user_prompt:
-            raise AgentExecutionError(
-                "user_prompt_missing",
-                "USER_PROMPT must be configured to process blob rows.",
-                status_code=500,
-            )
         rows = self._parse_blob_rows(
             blob_text,
             value_column=value_column,
@@ -474,45 +653,15 @@ class HostedOrchestrator:
         self.last_errors = []
         for index, row in enumerate(rows, start=1):
             try:
-                row_value = row.get("value")
-                if row_value is None:
-                    raise AgentExecutionError(
-                        "blob_missing_value",
-                        "A blob row is missing the configured data column.",
-                        status_code=422,
-                    )
-                request = ExternalRequest(
-                    request_id=uuid4(),
-                    user_input=f"{user_prompt}\n\n{row_value}".strip(),
-                    metadata={
-                        "source": "blob_batch",
-                        "blob_name": blob_name,
-                        "row_number": index,
-                        "column_name": value_column,
-                    },
-                )
-                if len(request.user_input) > self._context.settings.max_input_chars:
-                    raise AgentExecutionError(
-                        "input_too_large",
-                        "The prompt and row value exceed the configured input size limit.",
-                        status_code=413,
-                    )
-                row_context = RequestContext(
-                    request=request,
-                    prompt=self._context.prompt,
-                    started_at=time.monotonic(),
-                    settings=self._context.settings,
-                )
-                agent = None
-                if model_agent_factory is not None:
-                    candidate = model_agent_factory(row_context)
-                    if asyncio.iscoroutine(candidate):
-                        candidate = await candidate
-                    agent = candidate
-                response = await execute_request(
-                    row_context,
-                    model_agent=agent,
+                response = await self._process_batch_row(
+                    row_number=index,
+                    row_value=row.get("value"),
+                    source="blob_batch",
+                    file_name=blob_name,
+                    value_column=value_column,
+                    model_agent_factory=model_agent_factory,
                     persistence_tool=persistence_tool,
+                    missing_value_code="blob_missing_value",
                 )
                 responses.append(response)
             except AgentExecutionError as exc:
@@ -574,20 +723,38 @@ class HostedOrchestrator:
             raise AgentExecutionError(
                 "unsupported_stream", "Streaming is not supported.", status_code=400
             )
+        if self._context.settings.batch_file_path:
+            settings = self._context.settings
+            assert settings.batch_value_column
+            responses = await self.process_local_file_rows(
+                file_path=str(settings.batch_file_path),
+                value_column=settings.batch_value_column,
+            )
+            content = json.dumps(
+                {
+                    "responses": [response.model_dump(mode="json") for response in responses],
+                    "errors": self.last_errors,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            return AgentResponse(
+                messages=Message("assistant", [content]),
+                response_id=self.id,
+                agent_id=self.id,
+            )
         if self._context.settings.batch_blob_name:
             settings = self._context.settings
             assert (
                 settings.batch_storage_account_url
                 and settings.batch_container
                 and settings.batch_value_column
-                and settings.user_prompt
             )
             responses = await self.process_blob_rows(
                 account_url=settings.batch_storage_account_url,
                 container=settings.batch_container,
                 blob_name=settings.batch_blob_name,
                 value_column=settings.batch_value_column,
-                user_prompt=settings.user_prompt,
                 version_id=settings.batch_blob_version_id,
                 auth_mode=settings.auth_mode,
             )

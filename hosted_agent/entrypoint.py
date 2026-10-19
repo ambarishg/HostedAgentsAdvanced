@@ -38,8 +38,16 @@ async def parse_request(request: Request) -> InvocationRun:
     raw_body = await request.body()
     if len(raw_body) > settings.max_input_chars * 8:
         raise ValueError("Request body exceeds the configured size limit.")
+    batch_mode = bool(settings.batch_file_path or settings.batch_blob_name)
     try:
-        external_request = ExternalRequest.model_validate_json(raw_body)
+        if batch_mode:
+            payload = json.loads(raw_body)
+            if not isinstance(payload, dict):
+                raise ValueError("Request body must be a JSON object.")
+            payload["user_input"] = "Process configured batch input."
+            external_request = ExternalRequest.model_validate(payload)
+        else:
+            external_request = ExternalRequest.model_validate_json(raw_body)
     except ValueError as exc:
         raise ValueError("Request body does not match the agent input schema.") from exc
     if len(external_request.user_input) > settings.max_input_chars:
@@ -70,7 +78,10 @@ async def parse_request(request: Request) -> InvocationRun:
             settings=settings,
         )
     )
-    return InvocationRun(messages=external_request.user_input, options={}, stream=False)
+    invocation_message = (
+        "Process configured batch input." if batch_mode else external_request.user_input
+    )
+    return InvocationRun(messages=invocation_message, options={}, stream=False)
 
 
 def create_agent() -> HostedOrchestrator:

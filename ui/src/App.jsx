@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultPersistUrl = import.meta.env.VITE_PERSISTENCE_API_URL || '/api/pcr-results';
+const savedTheme = window.localStorage.getItem('hosted-agents-theme');
 
 const createRequestBody = (userInput, requestId) => ({
   request_id: requestId,
@@ -35,6 +36,7 @@ const normalizeAgentResponse = (payload) => {
 };
 
 function App() {
+  const [theme, setTheme] = useState(savedTheme === 'light' ? 'light' : 'dark');
   const [userInput, setUserInput] = useState('Summarize the main benefit of a transactional database write.');
   const [requestId, setRequestId] = useState('');
   const [agentUrl, setAgentUrl] = useState(defaultAgentUrl);
@@ -118,11 +120,13 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <aside className="sidebar">
         <div>
+          <div className="brand-mark" aria-hidden="true">H</div>
           <p className="eyebrow">Hosted agents</p>
           <h1>Console</h1>
+          <p className="brand-caption">A workspace for your AI operations</p>
         </div>
 
         <div className="status-card status-card--accent">
@@ -150,8 +154,25 @@ function App() {
           <div>
             <p className="eyebrow">Request workspace</p>
             <h2>Submit a new hosted agent task</h2>
+            <p className="page-caption">Send a task to your agent and review its response.</p>
           </div>
-          <span className="request-pill">ID: {requestLabel}</span>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => {
+                const nextTheme = theme === 'dark' ? 'light' : 'dark';
+                window.localStorage.setItem('hosted-agents-theme', nextTheme);
+                setTheme(nextTheme);
+              }}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            >
+              <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </button>
+            <span className="request-pill">ID: {requestLabel}</span>
+          </div>
         </header>
 
         <form className="request-form" onSubmit={handleSubmit}>

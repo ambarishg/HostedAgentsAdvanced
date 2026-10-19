@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from starlette.requests import Request
@@ -75,3 +77,49 @@ async def test_invocations_parser_rejects_invalid_contract(agent_settings, monke
 
     with pytest.raises(ValueError, match="agent input schema"):
         await entrypoint.parse_request(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("user_input", [None, "ignore this"])
+async def test_batch_invocation_does_not_require_or_use_user_input(
+    agent_settings, monkeypatch, user_input
+) -> None:
+    settings = replace(
+        agent_settings,
+        batch_file_path=Path("customers.csv"),
+        batch_value_column="customer",
+    )
+    payload = {"metadata": {"source": "batch"}}
+    if user_input is not None:
+        payload["user_input"] = user_input
+    body = json.dumps(payload).encode()
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/invocations",
+            "headers": [(b"content-type", b"application/json")],
+            "query_string": b"",
+        },
+        receive,
+    )
+    monkeypatch.setattr(entrypoint, "get_agent_settings", lambda: settings)
+    monkeypatch.setattr(
+        entrypoint,
+        "get_prompt_provider",
+        lambda: type(
+            "Provider",
+            (),
+            {"load_prompt": lambda self: PromptSnapshot("external prompt", "prompt-7", "b" * 64)},
+        )(),
+    )
+
+    parsed = await entrypoint.parse_request(request)
+    hosted_agent = entrypoint.create_agent()
+
+    assert parsed.messages == "Process configured batch input."
+    assert hosted_agent._context.request.user_input == "Process configured batch input."

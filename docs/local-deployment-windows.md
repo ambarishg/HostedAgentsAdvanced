@@ -130,6 +130,15 @@ RETENTION_DAYS=0
 
 Keep the Foundry project endpoint and model deployment name exact. Use the API app registration's Application ID URI for `API_AUDIENCE`; use the matching API scope in `PERSISTENCE_API_SCOPE`. The scope name in `API_REQUIRED_SCOPE` must match the scope exposed by that app. Leave `API_ALLOWED_CLIENT_IDS` blank during initial local testing unless you have identified the correct client ID to allow.
 
+To enable local CSV batch processing, configure `BATCH_FILE_PATH` and `BATCH_VALUE_COLUMN` in `.env`, for example:
+
+```dotenv
+BATCH_FILE_PATH=C:\Ambarish\HostedAgentsAdvanced\data\customers.csv
+BATCH_VALUE_COLUMN=customer
+```
+
+The path is resolved by the agent process on the same machine; use an absolute Windows path or a path relative to the process working directory. The CSV must be UTF-8 and contain the configured value column. Each row's value in that column is used as the row's USER prompt and processed/persisted separately. Configure either local file input or Blob batch input, not both.
+
 The local API settings are loaded from `.env`; `local.settings.json` supplies Azure Functions host settings such as `AzureWebJobsStorage` and `FUNCTIONS_WORKER_RUNTIME`. Do not commit `.env` or `local.settings.json`.
 
 For a plain-language explanation of how the API app registration, agent identity, and Function App fit together, including how to configure and troubleshoot them, see [How the persistence API app registration works](entra-api-app-registration-explained.md).
@@ -197,6 +206,37 @@ $result
 ```
 
 The response is wrapped in an adapter `response` field containing the application's JSON response as a string. A successful invocation means the model result was validated and the API confirmed persistence. If it fails, inspect the output in the agent and Functions windows; the API intentionally returns sanitized errors.
+
+### Process a local CSV batch
+
+Create a CSV at the configured path with a column matching `BATCH_VALUE_COLUMN`. For example, with `BATCH_VALUE_COLUMN=customer`:
+
+```csv
+customer
+Summarize Alice's profile
+Summarize Bob's profile
+Summarize Contoso's profile
+```
+
+Each row's `customer` value is sent directly to the model as that row's USER prompt and persisted as a separate interaction. Rows are read incrementally, so the full CSV is not loaded into memory. A row error is recorded and processing continues with the next row.
+
+Start the agent with `BATCH_FILE_PATH` and `BATCH_VALUE_COLUMN` set in `.env`, then invoke it without `user_input`:
+
+```powershell
+$body = @{
+  metadata = @{ source = "local-file-batch" }
+} | ConvertTo-Json -Depth 10
+
+$result = Invoke-RestMethod `
+  -Uri http://localhost:8088/invocations `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+
+$result
+```
+
+The returned batch response includes the per-row results and any row errors. Check PostgreSQL for the persisted interactions using the query above. To return to single-request processing, clear `BATCH_FILE_PATH` and `BATCH_VALUE_COLUMN` from `.env` and restart the agent.
 
 Verify a row in PostgreSQL:
 

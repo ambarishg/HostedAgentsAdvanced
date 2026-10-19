@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from hosted_agent.config import AgentSettings
@@ -18,9 +20,8 @@ def _set_required_environment(monkeypatch) -> None:
     monkeypatch.setenv("SYSTEM_PROMPT_VERSION", "test")
 
 
-def test_batch_configuration_reads_user_prompt_and_blob_settings(monkeypatch) -> None:
+def test_batch_configuration_reads_blob_settings_without_user_prompt(monkeypatch) -> None:
     _set_required_environment(monkeypatch)
-    monkeypatch.setenv("USER_PROMPT", "Summarize this item")
     monkeypatch.setenv("BATCH_STORAGE_ACCOUNT_URL", "https://storage.blob.core.windows.net")
     monkeypatch.setenv("BATCH_CONTAINER", "input")
     monkeypatch.setenv("BATCH_BLOB_NAME", "items.csv")
@@ -29,7 +30,6 @@ def test_batch_configuration_reads_user_prompt_and_blob_settings(monkeypatch) ->
 
     settings = AgentSettings.from_env()
 
-    assert settings.user_prompt == "Summarize this item"
     assert settings.batch_storage_account_url == "https://storage.blob.core.windows.net"
     assert settings.batch_container == "input"
     assert settings.batch_blob_name == "items.csv"
@@ -39,7 +39,37 @@ def test_batch_configuration_reads_user_prompt_and_blob_settings(monkeypatch) ->
 
 def test_partial_batch_configuration_is_rejected(monkeypatch) -> None:
     _set_required_environment(monkeypatch)
-    monkeypatch.setenv("USER_PROMPT", "Summarize this item")
+    monkeypatch.setenv("BATCH_VALUE_COLUMN", "description")
 
     with pytest.raises(ValueError, match="must be configured together"):
+        AgentSettings.from_env()
+
+
+def test_local_file_batch_configuration_reads_path_and_value_column(monkeypatch) -> None:
+    _set_required_environment(monkeypatch)
+    for name in (
+        "BATCH_STORAGE_ACCOUNT_URL",
+        "BATCH_CONTAINER",
+        "BATCH_BLOB_NAME",
+        "BATCH_BLOB_VERSION_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("BATCH_FILE_PATH", "data\\customers.csv")
+    monkeypatch.setenv("BATCH_VALUE_COLUMN", "customer")
+
+    settings = AgentSettings.from_env()
+
+    assert settings.batch_file_path == Path("data\\customers.csv")
+    assert settings.batch_value_column == "customer"
+
+
+def test_blob_and_local_batch_inputs_cannot_both_be_configured(monkeypatch) -> None:
+    _set_required_environment(monkeypatch)
+    monkeypatch.setenv("BATCH_STORAGE_ACCOUNT_URL", "https://storage.blob.core.windows.net")
+    monkeypatch.setenv("BATCH_CONTAINER", "input")
+    monkeypatch.setenv("BATCH_BLOB_NAME", "items.csv")
+    monkeypatch.setenv("BATCH_VALUE_COLUMN", "description")
+    monkeypatch.setenv("BATCH_FILE_PATH", "items.csv")
+
+    with pytest.raises(ValueError, match="either blob batch input"):
         AgentSettings.from_env()

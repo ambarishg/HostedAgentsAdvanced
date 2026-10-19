@@ -43,12 +43,12 @@ class AgentSettings:
     persistence_api_scope: str
     persistence_api_timeout_seconds: int
     persistence_api_retries: int
-    user_prompt: str | None = None
     batch_storage_account_url: str | None = None
     batch_container: str | None = None
     batch_blob_name: str | None = None
     batch_value_column: str | None = None
     batch_blob_version_id: str | None = None
+    batch_file_path: Path | None = None
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -109,19 +109,31 @@ class AgentSettings:
         batch_blob_name = os.getenv("BATCH_BLOB_NAME", "").strip() or None
         batch_value_column = os.getenv("BATCH_VALUE_COLUMN", "").strip() or None
         batch_blob_version_id = os.getenv("BATCH_BLOB_VERSION_ID", "").strip() or None
-        user_prompt = os.getenv("USER_PROMPT", "").strip() or None
-        batch_configuration = (
+        batch_file_path = os.getenv("BATCH_FILE_PATH", "").strip() or None
+        if batch_file_path:
+            batch_file_path = Path(batch_file_path)
+        blob_configuration = (
             batch_storage_account_url,
             batch_container,
             batch_blob_name,
-            batch_value_column,
-            user_prompt,
         )
-        if any(batch_configuration) and not all(batch_configuration):
+        if any(blob_configuration) and not all(blob_configuration):
             raise ValueError(
-                "USER_PROMPT, BATCH_STORAGE_ACCOUNT_URL, BATCH_CONTAINER, "
-                "BATCH_BLOB_NAME, and BATCH_VALUE_COLUMN must be configured together."
+                "BATCH_STORAGE_ACCOUNT_URL, BATCH_CONTAINER, and BATCH_BLOB_NAME "
+                "must be configured together."
             )
+        blob_batch_enabled = all(blob_configuration)
+        local_batch_enabled = batch_file_path is not None
+        if blob_batch_enabled and local_batch_enabled:
+            raise ValueError("Configure either blob batch input or BATCH_FILE_PATH, not both.")
+        if batch_value_column and not (blob_batch_enabled or local_batch_enabled):
+            raise ValueError("Batch input settings must be configured together.")
+        if blob_batch_enabled and not batch_value_column:
+            raise ValueError("BATCH_VALUE_COLUMN is required for blob batch input.")
+        if local_batch_enabled and not batch_value_column:
+            raise ValueError("BATCH_VALUE_COLUMN is required for BATCH_FILE_PATH.")
+        if batch_blob_version_id and not blob_batch_enabled:
+            raise ValueError("BATCH_BLOB_VERSION_ID requires Azure Blob batch input.")
         if batch_storage_account_url and urlparse(batch_storage_account_url).scheme != "https":
             raise ValueError("BATCH_STORAGE_ACCOUNT_URL must use HTTPS.")
 
@@ -160,10 +172,10 @@ class AgentSettings:
             persistence_api_scope=api_scope,
             persistence_api_timeout_seconds=_positive_int("PERSISTENCE_API_TIMEOUT_SECONDS", 15),
             persistence_api_retries=_positive_int("PERSISTENCE_API_RETRIES", 1, allow_zero=True),
-            user_prompt=user_prompt,
             batch_storage_account_url=batch_storage_account_url,
             batch_container=batch_container,
             batch_blob_name=batch_blob_name,
             batch_value_column=batch_value_column,
             batch_blob_version_id=batch_blob_version_id,
+            batch_file_path=batch_file_path,
         )

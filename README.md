@@ -24,7 +24,7 @@ The hosted agent implements Foundry's **Invocations** protocol through `Invocati
 }
 ```
 
-`user_input` must contain non-whitespace text. If omitted, `request_id` is generated. The invocation adapter's wire response is `{"response":"<JSON string>"}`; decode the `response` value to obtain the application result:
+For single-request invocation, `user_input` must contain non-whitespace text. In configured batch mode, `user_input` may be omitted or supplied, but is ignored; the orchestrator uses each row's `BATCH_VALUE_COLUMN` value instead. If omitted, `request_id` is generated. The invocation adapter's wire response is `{"response":"<JSON string>"}`; decode the `response` value to obtain the application result:
 
 ```json
 {
@@ -68,7 +68,9 @@ SYSTEM_PROMPT_VERSION=local-v1
 
 The prompt is loaded once per invocation. Its SHA-256 and version are recorded; prompt contents are not returned, persisted, or logged. A missing or whitespace-only prompt fails the invocation. The blob option requires Blob versioning and an immutable `PROMPT_VERSION` (the Azure Blob version ID); configure the Hosted Agent identity with `Storage Blob Data Reader`.
 
-To process rows from an Azure Blob file, set `USER_PROMPT`, `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, and `BATCH_VALUE_COLUMN`. The `USER_PROMPT` is the shared instruction, and the configured value column supplies each row's data; they are kept separate. Optionally set `BATCH_BLOB_VERSION_ID` to pin an immutable input version. When these batch settings are enabled, each invocation processes that blob, generates one response per row, and persists each result. Grant the agent identity Blob Data Reader access to the input container.
+To process rows from an Azure Blob file, set `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, and `BATCH_VALUE_COLUMN`. Each row's configured value is used as that row's user prompt; no separate `USER_PROMPT` or invocation `user_input` is needed. Optionally set `BATCH_BLOB_VERSION_ID` to pin an immutable input version. When these batch settings are enabled, each invocation processes that blob, generates one response per row, and persists each result. Grant the agent identity Blob Data Reader access to the input container.
+
+For local CSV batch input, set `BATCH_FILE_PATH` and `BATCH_VALUE_COLUMN` instead. Each row's configured value is used directly as that row's user prompt. Rows are streamed from disk, and each generated result is persisted separately. The file must be readable at the configured path by the agent process. Batch invocations do not use `user_input`; configure either local file input or Blob batch input, not both.
 
 Local identity uses `DefaultAzureCredential`. In Azure set `AGENT_AUTH_MODE=managed_identity`; grant the Hosted Agent identity access to the model, Blob Storage (when used), and the API's Entra application. Never grant it PostgreSQL access.
 
@@ -206,7 +208,7 @@ Use `.env.example` as the canonical list of settings. Required settings are vali
 | Foundry | `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_MODEL_DEPLOYMENT_NAME`, `AGENT_NAME`, `AGENT_VERSION` |
 | Output schema | `RESULT_SCHEMA_VERSION` and matching `PERSISTENCE_SCHEMA_VERSION` |
 | Prompt | `SYSTEM_PROMPT_SOURCE=file|blob`; file path/version or Blob account/container/name/immutable version ID |
-| Blob batch input | `USER_PROMPT`, `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, `BATCH_VALUE_COLUMN`, optional `BATCH_BLOB_VERSION_ID` |
+| Batch input | Azure Blob: `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, `BATCH_VALUE_COLUMN`, optional `BATCH_BLOB_VERSION_ID`; local CSV: `BATCH_FILE_PATH`, `BATCH_VALUE_COLUMN` |
 | API client | `PERSISTENCE_API_URL`, `PERSISTENCE_API_SCOPE`, timeout and bounded transient retry count |
 | API auth | `API_TENANT_ID`, `API_AUDIENCE`, and required delegated scope or application role; optional allowed client IDs |
 | PostgreSQL | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGSCHEMA`, `PGUSER`, `PG_AUTH_MODE`, pool and connect limits |

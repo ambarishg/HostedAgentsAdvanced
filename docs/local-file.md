@@ -1,0 +1,3 @@
+Presently the Orchestrator is configured to take a USER prompt and the blob file as input. 
+
+Change the Orchestrator to include local file as input. The Orchestrator will read the local file and extract the USER prompt from it. The Orchestrator will then use the extracted USER prompt to generate a response. The Orchestrator will fetch a predefined column from the local file and use it to generate a response. The Orchestrator will read each row of the local file and generate a response for each row based on the extracted USER prompt and the predefined column. Presently, the Orchestrator pushes the generated response to the Persistence API. The Orchestrator will now do this for each row of the local file.

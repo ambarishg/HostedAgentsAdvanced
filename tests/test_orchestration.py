@@ -170,7 +170,7 @@ async def test_api_timeout_never_returns_success(request_context) -> None:
 
 @pytest.mark.asyncio
 async def test_blob_file_rows_are_processed_individually(request_context, monkeypatch) -> None:
-    csv_text = "prompt,customer\nBase: {prompt},Alice\nBase: {prompt},Bob\n"
+    csv_text = "customer\nAlice\nBob\n"
 
     class Blob:
         def download_blob(self, **kwargs):
@@ -221,22 +221,18 @@ async def test_blob_file_rows_are_processed_individually(request_context, monkey
         container="input",
         blob_name="customers.csv",
         value_column="customer",
-        user_prompt="Process this customer:",
         model_agent_factory=factory,
         persistence_tool=FakePersistenceTool(),
     )
 
     assert len(responses) == 2
     assert orchestrator.last_errors == []
-    assert received_inputs == [
-        "Process this customer:\n\nAlice",
-        "Process this customer:\n\nBob",
-    ]
+    assert received_inputs == ["Alice", "Bob"]
 
 
 @pytest.mark.asyncio
 async def test_blob_row_errors_are_recorded_without_aborting(request_context, monkeypatch) -> None:
-    csv_text = "prompt,customer\nValidRow,ok\nBadRow,\n"
+    csv_text = "customer\nValidRow\nBadRow\n"
 
     class Blob:
         def download_blob(self, **kwargs):
@@ -284,10 +280,152 @@ async def test_blob_row_errors_are_recorded_without_aborting(request_context, mo
         container="input",
         blob_name="customers.csv",
         value_column="customer",
-        user_prompt="Process this customer:",
         model_agent_factory=factory,
         persistence_tool=FakePersistenceTool(),
     )
 
     assert len(responses) == 1
     assert len(orchestrator.last_errors) == 1
+
+
+@pytest.mark.asyncio
+async def test_local_file_column_values_are_processed_and_persisted(
+    request_context, tmp_path
+) -> None:
+    file_path = tmp_path / "customers.csv"
+    file_path.write_text("customer\nSummarize Alice\nSummarize Bob\n", encoding="utf-8")
+    orchestrator = HostedOrchestrator(request_context)
+    received_inputs = []
+
+    class RecordingPersistence:
+        def __init__(self) -> None:
+            self.saved = []
+
+        async def save_agent_result(self, **values):
+            self.saved.append(values)
+            return {
+                "interaction_id": UUID(int=len(self.saved)),
+                "duplicate": False,
+                "status": "completed",
+                "duration_ms": 1,
+            }
+
+    persistence = RecordingPersistence()
+
+    async def factory(row_context):
+        received_inputs.append(row_context.request.user_input)
+        return FakeModelAgent(
+            AgentResponse(
+                messages=Message(
+                    "assistant",
+                    [
+                        json.dumps(
+                            {
+                                "schema_version": "generic-v1",
+                                "result_json": '{"answer":"processed"}',
+                            }
+                        )
+                    ],
+                ),
+                value=ModelAgentOutput(
+                    schema_version="generic-v1",
+                    result_json='{"answer":"processed"}',
+                ),
+                finish_reason="stop",
+                response_id=row_context.request.request_id.hex,
+            )
+        )
+
+    responses = await orchestrator.process_local_file_rows(
+        file_path=str(file_path),
+        value_column="customer",
+        model_agent_factory=factory,
+        persistence_tool=persistence,
+    )
+
+    assert len(responses) == 2
+    assert len(persistence.saved) == 2
+    assert received_inputs == ["Summarize Alice", "Summarize Bob"]
+    assert [saved["metadata"]["row_number"] for saved in persistence.saved] == [1, 2]
+    assert orchestrator.last_errors == []
+
+
+@pytest.mark.asyncio
+async def test_local_file_row_errors_are_recorded_and_processing_continues(
+    request_context, tmp_path
+) -> None:
+    file_path = tmp_path / "customers.csv"
+    file_path.write_text("customer\nProcess Alice\n \n", encoding="utf-8")
+    orchestrator = HostedOrchestrator(request_context)
+    received_inputs = []
+
+    async def factory(row_context):
+        received_inputs.append(row_context.request.user_input)
+        return FakeModelAgent(
+            AgentResponse(
+                messages=Message(
+                    "assistant",
+                    [json.dumps({"schema_version": "generic-v1", "result_json": "{}"})],
+                ),
+                value=ModelAgentOutput(schema_version="generic-v1", result_json="{}"),
+                finish_reason="stop",
+            )
+        )
+
+    responses = await orchestrator.process_local_file_rows(
+        file_path=str(file_path),
+        value_column="customer",
+        model_agent_factory=factory,
+        persistence_tool=FakePersistenceTool(),
+    )
+
+    assert len(responses) == 1
+    assert received_inputs == ["Process Alice"]
+    assert orchestrator.last_errors == [
+        {
+            "row_number": 2,
+            "error": "A row is missing the configured data column.",
+            "code": "local_file_missing_value",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_local_file_read_failure_is_reported(request_context, tmp_path) -> None:
+    orchestrator = HostedOrchestrator(request_context)
+
+    with pytest.raises(AgentExecutionError) as error:
+        await orchestrator.process_local_file_rows(
+            file_path=tmp_path / "missing.csv",
+            value_column="customer",
+        )
+
+    assert error.value.code == "local_file_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_run_dispatches_configured_local_file_batch(
+    request_context, tmp_path, monkeypatch
+) -> None:
+    from dataclasses import replace
+
+    file_path = tmp_path / "customers.csv"
+    settings = replace(
+        request_context.settings,
+        batch_file_path=file_path,
+        batch_value_column="customer",
+    )
+    orchestrator = HostedOrchestrator(replace(request_context, settings=settings))
+    received = {}
+
+    async def process_local_file_rows(**kwargs):
+        received.update(kwargs)
+        orchestrator.last_errors = []
+        return []
+
+    monkeypatch.setattr(orchestrator, "process_local_file_rows", process_local_file_rows)
+
+    response = await orchestrator.run()
+
+    assert received == {"file_path": str(file_path), "value_column": "customer"}
+    assert json.loads(response.text) == {"responses": [], "errors": []}
