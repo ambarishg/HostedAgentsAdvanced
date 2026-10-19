@@ -45,7 +45,7 @@ class InteractionHistoryItem(BaseModel):
     request_id: UUID
     agent_name: str
     user_input: str
-    agent_response: str | None
+    result_json: dict[str, Any]
 
 
 class InteractionHistoryResponse(BaseModel):

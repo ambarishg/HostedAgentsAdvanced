@@ -30,7 +30,10 @@ def test_history_endpoint_returns_interactions(api_settings, monkeypatch) -> Non
         request_id=uuid.uuid4(),
         agent_name="test-agent",
         user_input="What happened?",
-        agent_response="An interaction was recorded.",
+        result_json={
+            "schema_version": "generic-v1",
+            "result": {"primary_contact_reason": "Policy status"},
+        },
     )
     expected = InteractionHistoryResponse(items=[item], limit=25, offset=50, has_more=True)
 

@@ -426,7 +426,7 @@ function App() {
                       <th scope="col">Request ID</th>
                       <th scope="col">Agent Name</th>
                       <th scope="col">User Input</th>
-                      <th scope="col">Agent Response</th>
+                      <th scope="col">Result JSON</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -435,7 +435,11 @@ function App() {
                         <td>{interaction.request_id}</td>
                         <td>{interaction.agent_name}</td>
                         <td>{interaction.user_input}</td>
-                        <td>{interaction.agent_response || 'No response recorded.'}</td>
+                        <td>
+                          <pre className="interaction-result">
+                            {JSON.stringify(interaction.result_json, null, 2) || 'No result recorded.'}
+                          </pre>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

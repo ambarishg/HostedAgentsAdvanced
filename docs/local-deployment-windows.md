@@ -174,7 +174,7 @@ func start
 
 The HTTP route should be available at `http://localhost:7071/api/pcr-results`. The route is configured for anonymous Functions-key auth because the application performs its own Entra bearer-token validation. An unauthenticated test request is expected to be rejected.
 
-The authenticated interaction-history route is `GET http://localhost:7071/api/agent-interactions`; it returns `request_id`, `agent_name`, `user_input`, and `agent_response` in pages of up to 100 rows. The UI's **Agent Interaction History** page calls this route. The current UI does not yet include MSAL sign-in; until that frontend integration is added, get a token for `PERSISTENCE_API_SCOPE` and paste it into the UI's **Persistence API access token** field:
+The authenticated interaction-history route is `GET http://localhost:7071/api/agent-interactions`; it returns `request_id`, `agent_name`, `user_input`, and `result_json` in pages of up to 100 rows. The UI's **Agent Interaction History** page displays the Result JSON alongside the request ID, agent name, and user input. The current UI does not yet include MSAL sign-in; until that frontend integration is added, get a token for `PERSISTENCE_API_SCOPE` and paste it into the UI's **Persistence API access token** field:
 
 ```powershell
 $token = az account get-access-token `

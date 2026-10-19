@@ -394,6 +394,12 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
+.interaction-result {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .interaction-table tr:last-child td {
   border-bottom: 0;
 }

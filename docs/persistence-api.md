@@ -1,12 +1,8 @@
-For the Persistence API, make a new function  so that it can 
-Get the Result from the agent_response column of the agent_interaction table in the agentdb database.
+The interaction-history API returns the persisted `result_json` value from the `result_json` column of the `agent_interactions` table in the `agentdb` database.
 
-Make sure that the UI calls the Persistence API to retrieve the Result for each interaction and display it in the UI.
-
-Show the Request ID , Agent Name, User Input and Agent Response for each row from the API Response. This needs to be displayed in a table format in the UI. This needs to be a seperate page in the UI called "Agent Interaction History".
+The UI calls the Persistence API to retrieve each interaction and displays Request ID, Agent Name, User Input, and Result JSON in a table on the separate **Agent Interaction History** page.
 
 Update the local-deployment-windows.md and quickstart-windows.md files for any changes.
-
 
 
 
