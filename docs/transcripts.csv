@@ -1,0 +1,81 @@
+﻿call_id,business_area,call_type,duration,sentiment,transcript,key_insights,review_notes
+SYN-001,UK Retail Protection,Life insurance enquiry,00:03:20,Neutral to positive,"Customer: My wife and I have just bought a house. We want to make sure the mortgage is covered if something happens to either of us.
+Agent: Congratulations on your new home. Are you looking for cover that reduces alongside your mortgage, or cover that stays at the same level?
+Customer: Probably something that matches the mortgage. I'm not sure how that works.
+Agent: A decreasing term policy is one option people consider for repayment mortgages. The right type depends on your circumstances and what you want the policy to cover.
+Customer: Can we both be covered under one policy?
+Agent: We can discuss the available options and whether single or joint cover fits your needs. I can also explain what information you would need to provide for an application.
+Customer: That would be helpful. I don't want to buy something without understanding it.
+Agent: Of course. Let's go through the options and any questions you have before you decide.",Life-stage trigger; needs product information; potential follow-up opportunity.,Fictional synthetic transcript; not an actual Legal & General call or verified company script.
+SYN-002,UK Retail Protection,Application follow-up,00:02:45,Slightly frustrated,"Customer: I submitted my life insurance application last week, but I haven't received an update.
+Agent: I'm sorry you've had to chase this. I'll check the application status after verifying your details.
+Customer: I thought it would be straightforward. I'm worried something has gone wrong.
+Agent: I can see that additional information is required before the application can progress.
+Customer: What information? Nobody has told me.
+Agent: The outstanding request needs to be checked against your application record. I'll explain what is required and how you can provide it.
+Customer: Can you send me the instructions by email?
+Agent: I'll confirm the appropriate communication method and arrange the next step according to our process.",Potential information gap; customer uncertainty; check whether an outstanding-information request was sent.,Fictional synthetic transcript; application status and actions are scenario details only.
+SYN-003,UK Retail Protection,Medical disclosure during underwriting,00:04:10,Anxious,"Customer: The application asks about medical conditions. I was diagnosed with high blood pressure a few years ago. Do I need to mention it?
+Agent: Please answer the medical questions accurately, following the wording and time period specified in the application.
+Customer: It's controlled with medication. Will that mean I can't get cover?
+Agent: I can't determine the underwriting outcome on this call. The relevant information will be assessed through the insurer's underwriting process.
+Customer: Should I leave it out if I think it's not serious?
+Agent: No. It's important to disclose information requested by the application accurately. If you're unsure how a question applies to you, I can help clarify the question or direct you to the appropriate underwriting support.
+Customer: All right. I just didn't want to be rejected automatically.
+Agent: I understand. Let's make sure the information is recorded correctly.",Medical-disclosure interaction; check for accurate guidance and unsupported underwriting promises.,Fictional synthetic transcript; not medical or underwriting advice.
+SYN-004,UK Retail Protection,Policy details and coverage,00:03:00,Neutral,"Customer: I have a life insurance policy, but I can't remember whether it covers critical illness as well.
+Agent: I can help you understand the cover recorded on your policy once I've verified your identity.
+Customer: If I become seriously ill, would the policy pay out?
+Agent: That depends on the specific benefits included in your policy and the applicable terms and conditions. I'll check the policy schedule rather than make assumptions.
+Customer: Could you also explain who receives the money if I die?
+Agent: I'll check the policy arrangements and explain what the records show. If you need to change a beneficiary or related arrangement, I'll explain the applicable process.
+Customer: Please send me a copy of the policy details too.
+Agent: I'll confirm the available document-delivery options.",Policy comprehension gap; request for policy documents; need to retrieve authoritative policy details.,Fictional synthetic transcript; coverage depends on actual policy terms.
+SYN-005,UK Retail Protection,Premium affordability concern,00:03:35,Concerned,"Customer: My monthly expenses have gone up, and I'm finding it difficult to keep paying my insurance premium.
+Agent: I'm sorry things are difficult at the moment. Let's look at what options may be available under your policy.
+Customer: Could I reduce the premium?
+Agent: Depending on the policy, there may be options to review the cover, but reducing benefits can affect the protection you have. I'll explain the options available for your particular policy.
+Customer: I don't really want to lose the cover. I just need it to be more affordable.
+Agent: Understood. Before making any changes, we'll look at the implications and any applicable restrictions so you can make an informed decision.
+Customer: Please do. I don't want to cancel if there's another option.
+Agent: Let's review the available options together.",Potential cancellation risk; financial difficulty; review affordability options without pressuring the customer.,Fictional synthetic transcript; options depend on policy terms and process.
+SYN-006,UK Retail Protection,Change of personal details,00:02:15,Positive,"Customer: I've moved house and need to update my address on my policy.
+Agent: Certainly. I'll first verify your identity and then check the procedure for updating your address.
+Customer: Will that change my premium?
+Agent: I'll check whether the change has any effect under your particular policy. I don't want to give you an inaccurate answer.
+Customer: Can you update my email address at the same time?
+Agent: Yes, we can check both requests and confirm what information is needed.
+Customer: Great. I'd rather get everything sorted in one call.
+Agent: I'll work through both changes and confirm which updates have been completed.",First-contact resolution opportunity; multiple-request handling; identity-verification compliance.,Fictional synthetic transcript; no actual customer data or account changes.
+SYN-007,UK Retail Protection,Claim notification following a death,00:04:30,Distressed,"Customer: My father passed away last week. I believe he had a life insurance policy, and I don't know where to start.
+Agent: I'm very sorry for your loss. I'll help you understand the next steps at your own pace.
+Customer: I have some paperwork, but I'm not sure what you need.
+Agent: We can first establish whether there's a policy and explain the process for notifying us of a death. I'll also explain what documents may be required.
+Customer: Does that mean the claim will definitely be paid?
+Agent: I can't confirm a claim outcome at this stage. The claim will need to be assessed against the policy terms and the information provided.
+Customer: I understand. I just need to know what to do next.
+Agent: Of course. Let's take it one step at a time, and I'll explain the next steps clearly.",Bereavement and distress; empathy; avoid premature promises; explain claims process clearly.,Fictional synthetic transcript; sensitive scenario for service-quality testing.
+SYN-008,UK Retail Protection,Claim status enquiry,00:03:40,Frustrated,"Customer: I've already submitted all the documents for my claim, but I still don't know what's happening.
+Agent: I understand why you'd want an update. I'll check the current status and any outstanding requirements.
+Customer: I've called twice already. Every time, I have to explain everything again.
+Agent: I'm sorry you've had to repeat yourself. I'll review the notes available so we can avoid asking you for information unnecessarily.
+Customer: Is there anything else you need from me?
+Agent: The case notes indicate that the claim is awaiting a further review. I'll verify whether anything remains outstanding and explain the next step.
+Customer: Can someone tell me when I'll hear back?
+Agent: I'll check whether a timeframe can be confirmed and explain how you can follow up if you haven't received an update.",Repeated contact; potential rework; unclear ownership or delays; correlate with actual system timestamps before assigning cause.,Fictional synthetic transcript; status details are scenario content only.
+SYN-009,UK Retail Protection,Complaint about service delay,00:04:00,Negative,"Customer: I'm extremely unhappy. I was told I'd receive an update last week, and nobody contacted me.
+Agent: I'm sorry we haven't met the expectation that was set. I can understand why that's frustrating.
+Customer: This is the third time I've had to chase you. I want to make a formal complaint.
+Agent: I'll explain how to register your complaint and make sure your concerns are captured accurately.
+Customer: I want someone to take responsibility for this.
+Agent: I'll record the repeated contact, the missed update and your request for the matter to be reviewed. I'll also explain what happens next under the complaints process.
+Customer: And when will I get a response?
+Agent: I'll confirm the applicable acknowledgement and response arrangements rather than give you an unverified date.",Explicit complaint intent; repeated service failure; escalation and complaint-classification checks.,Fictional synthetic transcript; regulatory handling should be checked against current requirements.
+SYN-010,UK Retail Protection,Customer needing additional support,00:03:50,Anxious,"Customer: I'm finding it difficult to understand the letter you sent me. There is a lot of information, and I get confused.
+Agent: That's absolutely fine. We can go through it slowly, one part at a time.
+Customer: Could you explain what I need to do first?
+Agent: Certainly. I'll explain the first action in plain language, then check whether you'd like me to repeat or clarify anything.
+Customer: Would you be able to send me a simpler explanation?
+Agent: I'll check what accessible communication options are available and arrange the appropriate follow-up.
+Customer: Thank you. I was worried I might miss something important.
+Agent: Let's make sure you understand the next step before we finish the call.",Request for additional support and clearer communication; assess appropriate adjustments without inferring a diagnosis.,Fictional synthetic transcript; potential support needs require appropriate human handling.

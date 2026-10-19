@@ -9,6 +9,13 @@ local.settings.json
 *.log
 *.sqlite
 
+# Node / React UI
+node_modules/
+ui/dist/
+ui/.vite/
+ui/.env
+ui/.env.*
+ui/npm-debug.log*
 
 .python_packages
 .venv-py312

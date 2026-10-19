@@ -55,6 +55,24 @@ $env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
 uv run python -m hosted_agent.entrypoint
 ```
 
+## Start the React UI
+
+Open a fourth PowerShell window in the repository root and run:
+
+```powershell
+Set-Location C:\Ambarish\HostedAgentsAdvanced\ui
+npm install
+npm run dev -- --host 0.0.0.0 --port 3000
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+The UI is configured to submit requests to the Hosted Agent at `http://localhost:8088/invocations` and proxy API calls to `http://localhost:7071` while running locally.
+
 ## Send a test request
 
 In another PowerShell window:
