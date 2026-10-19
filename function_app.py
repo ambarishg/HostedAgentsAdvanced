@@ -104,6 +104,49 @@ def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
     return _json_response(result.model_dump(mode="json"), status)
 
 
+@app.route(route="agent-interactions", methods=["GET"])
+def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        get_settings()
+    except (ValueError, OSError):
+        logger.exception(
+            "Persistence API configuration failed", extra={"error_code": "config_error"}
+        )
+        return _error("configuration_error", "Persistence API is not configured.", 500)
+
+    try:
+        _token_validator().validate(req.headers.get("Authorization"))
+    except AuthenticationError as exc:
+        logger.warning(
+            "Persistence API rejected caller",
+            extra={"error_code": exc.code, "status_code": exc.status_code},
+        )
+        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+
+    try:
+        limit = int(req.params.get("limit", "100"))
+        offset = int(req.params.get("offset", "0"))
+    except ValueError:
+        return _error("invalid_pagination", "limit and offset must be integers.", 400)
+    if not 1 <= limit <= 100 or offset < 0:
+        return _error(
+            "invalid_pagination",
+            "limit must be between 1 and 100 and offset must not be negative.",
+            400,
+        )
+
+    try:
+        result = _persistence_service().list_interactions(limit=limit, offset=offset)
+    except DatabaseUnavailable:
+        return _error(
+            "database_unavailable", "Persistence service is temporarily unavailable.", 503
+        )
+    except PersistenceFailure:
+        return _error("persistence_failed", "The database query did not complete.", 500)
+
+    return _json_response(result.model_dump(mode="json"), 200)
+
+
 @app.timer_trigger(schedule="0 0 3 * * *", arg_name="timer", run_on_startup=False)
 def retention_cleanup(timer: func.TimerRequest) -> None:
     settings = get_settings()

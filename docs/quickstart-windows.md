@@ -73,6 +73,10 @@ http://localhost:3000
 
 The UI is configured to submit requests to the Hosted Agent at `http://localhost:8088/invocations` and proxy API calls to `http://localhost:7071` while running locally.
 
+**Current authentication behavior:** the UI does not yet have MSAL sign-in wired in, so the history page still requires a short-lived Entra access token in its **Persistence API access token** field. For the detailed setup to replace this with browser sign-in—including app registrations, permissions, local redirect URI, and deployment settings—see [Automatic Entra sign-in for the UI](local-deployment-windows.md#automatic-entra-sign-in-for-the-ui-msal-rollout).
+
+For temporary local testing, obtain a token for the API's delegated scope using the instructions in the full Windows deployment guide. Do not save a token in source code or a Vite environment file.
+
 ## Send a test request
 
 In another PowerShell window:
@@ -88,3 +92,10 @@ Invoke-RestMethod -Uri http://localhost:8088/invocations -Method Post `
 ```
 
 For setup details and troubleshooting, see [the full Windows deployment guide](local-deployment-windows.md).
+
+
+$token = az account get-access-token `
+  --scope "api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default" `
+  --query accessToken -o tsv
+
+echo $token > token.txt

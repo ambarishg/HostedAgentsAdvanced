@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.dialects.postgresql import insert
@@ -81,6 +82,23 @@ class InteractionRepository:
                 delete(AgentInteraction).where(AgentInteraction.created_at < cutoff)
             )
             return result.rowcount or 0
+
+    def list_interactions(self, *, limit: int, offset: int) -> tuple[list[dict[str, Any]], bool]:
+        statement = (
+            select(
+                AgentInteraction.request_id,
+                AgentInteraction.agent_name,
+                AgentInteraction.user_input,
+                AgentInteraction.agent_response,
+            )
+            .order_by(AgentInteraction.created_at.desc(), AgentInteraction.id.desc())
+            .limit(limit + 1)
+            .offset(offset)
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        has_more = len(rows) > limit
+        return [dict(row) for row in rows[:limit]], has_more
 
 
 def render_human_readable(request: PersistenceRequest) -> str:

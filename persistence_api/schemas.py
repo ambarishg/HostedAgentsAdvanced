@@ -48,6 +48,20 @@ class PersistenceResponse(BaseModel):
     duplicate: bool
 
 
+class InteractionHistoryItem(BaseModel):
+    request_id: UUID
+    agent_name: str
+    user_input: str
+    agent_response: str | None
+
+
+class InteractionHistoryResponse(BaseModel):
+    items: list[InteractionHistoryItem]
+    limit: int
+    offset: int
+    has_more: bool
+
+
 class ErrorResponse(BaseModel):
     success: bool = False
     error: dict[str, str]

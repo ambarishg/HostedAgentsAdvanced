@@ -13,7 +13,13 @@ from persistence_api.repository import (
     InteractionRepository,
     render_human_readable,
 )
-from persistence_api.schemas import PersistenceRequest, PersistenceResponse, calculate_payload_hash
+from persistence_api.schemas import (
+    InteractionHistoryItem,
+    InteractionHistoryResponse,
+    PersistenceRequest,
+    PersistenceResponse,
+    calculate_payload_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +120,23 @@ class PersistenceService:
             },
         )
         return response
+
+    def list_interactions(self, *, limit: int, offset: int) -> InteractionHistoryResponse:
+        try:
+            items, has_more = self._repository.list_interactions(limit=limit, offset=offset)
+        except OperationalError as exc:
+            logger.error("Database connection failed", extra={"error_code": "database_unavailable"})
+            raise DatabaseUnavailable("Database is temporarily unavailable.") from exc
+        except SQLAlchemyError as exc:
+            logger.error("Database query failed", extra={"error_code": "database_error"})
+            raise PersistenceFailure("Database query failed.") from exc
+
+        return InteractionHistoryResponse(
+            items=[InteractionHistoryItem.model_validate(item) for item in items],
+            limit=limit,
+            offset=offset,
+            has_more=has_more,
+        )
 
     def delete_expired(self) -> int:
         from datetime import datetime, timedelta

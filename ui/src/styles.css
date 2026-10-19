@@ -197,6 +197,31 @@ h1 {
   gap: 17px;
 }
 
+.page-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-navigation button {
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.page-navigation button:hover,
+.page-navigation button.page-navigation__active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -314,6 +339,69 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
+.interaction-history-panel {
+  margin-top: 20px;
+  padding: 19px 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.interaction-history-panel .section-heading {
+  margin-bottom: 14px;
+}
+
+.interaction-history-panel button.secondary {
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-size: 0.8rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+}
+
+.interaction-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.interaction-table th,
+.interaction-table td {
+  min-width: 150px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.interaction-table th {
+  background: var(--surface-raised);
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.interaction-table td {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.interaction-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.load-more-button {
+  margin-top: 14px;
+}
+
 .request-form {
   padding: clamp(18px, 3vw, 27px);
 }
@@ -327,6 +415,28 @@ textarea:focus {
   text-transform: uppercase;
 }
 
+.batch-mode-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.batch-mode-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.field-help {
+  margin: 7px 0 0;
+  color: var(--text-subtle);
+  font-size: 0.82rem;
+}
+
 .field-label:first-child {
   margin-top: 0;
 }
@@ -334,6 +444,11 @@ textarea:focus {
 #user-input {
   min-height: 166px;
   resize: vertical;
+}
+
+textarea:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
 }
 
 .button-row {
@@ -568,8 +683,7 @@ button:hover:not(:disabled) {
   }
 
   .config-stack {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
   }
 
   .main-panel {
@@ -597,6 +711,16 @@ button:hover:not(:disabled) {
 
   .history-list li {
     grid-template-columns: 1fr auto;
+  }
+
+  .interaction-history-panel {
+    padding: 16px;
+  }
+
+  .interaction-table th,
+  .interaction-table td {
+    min-width: 130px;
+    padding: 10px;
   }
 
   .history-list time {

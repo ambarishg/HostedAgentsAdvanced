@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import replace
 from functools import lru_cache
 
 from agent_framework_foundry_hosting import InvocationRun, InvocationsHostServer
@@ -38,16 +39,23 @@ async def parse_request(request: Request) -> InvocationRun:
     raw_body = await request.body()
     if len(raw_body) > settings.max_input_chars * 8:
         raise ValueError("Request body exceeds the configured size limit.")
-    batch_mode = bool(settings.batch_file_path or settings.batch_blob_name)
+    configured_batch_mode = bool(settings.batch_file_path or settings.batch_blob_name)
     try:
-        if batch_mode:
-            payload = json.loads(raw_body)
-            if not isinstance(payload, dict):
-                raise ValueError("Request body must be a JSON object.")
-            payload["user_input"] = "Process configured batch input."
-            external_request = ExternalRequest.model_validate(payload)
-        else:
-            external_request = ExternalRequest.model_validate_json(raw_body)
+        payload = json.loads(raw_body)
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be a JSON object.")
+    except ValueError as exc:
+        raise ValueError("Request body does not match the agent input schema.") from exc
+    requested_batch_mode = payload.pop("batch_mode", None)
+    if requested_batch_mode is not None and type(requested_batch_mode) is not bool:
+        raise ValueError("batch_mode must be a boolean.")
+    batch_mode = configured_batch_mode if requested_batch_mode is None else requested_batch_mode
+    if batch_mode and not configured_batch_mode:
+        raise ValueError("Batch mode was requested, but no batch input is configured.")
+    if batch_mode:
+        payload["user_input"] = "Process configured batch input."
+    try:
+        external_request = ExternalRequest.model_validate(payload)
     except ValueError as exc:
         raise ValueError("Request body does not match the agent input schema.") from exc
     if len(external_request.user_input) > settings.max_input_chars:
@@ -70,12 +78,24 @@ async def parse_request(request: Request) -> InvocationRun:
         )
         raise ValueError("Configured system prompt is unavailable.") from None
 
+    request_settings = settings
+    if configured_batch_mode and not batch_mode:
+        request_settings = replace(
+            settings,
+            batch_storage_account_url=None,
+            batch_container=None,
+            batch_blob_name=None,
+            batch_value_column=None,
+            batch_blob_version_id=None,
+            batch_file_path=None,
+        )
+
     set_request_context(
         RequestContext(
             request=external_request,
             prompt=prompt,
             started_at=asyncio.get_running_loop().time(),
-            settings=settings,
+            settings=request_settings,
         )
     )
     invocation_message = (

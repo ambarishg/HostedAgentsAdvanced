@@ -73,6 +73,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /agent-interactions:
+    get:
+      operationId: list_agent_interactions
+      summary: List persisted agent interactions
+      description: Returns interaction history ordered newest first. Results are paginated.
+      security:
+        - entraBearer: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Persisted interactions for the requested page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InteractionHistory"
+        "400":
+          description: Invalid pagination parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Entra access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Required caller permission is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: PostgreSQL is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     entraBearer:
@@ -171,6 +225,31 @@ components:
           const: completed
         duplicate:
           type: boolean
+    InteractionHistory:
+      type: object
+      required: [items, limit, offset, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [request_id, agent_name, user_input, agent_response]
+            properties:
+              request_id:
+                type: string
+                format: uuid
+              agent_name:
+                type: string
+              user_input:
+                type: string
+              agent_response:
+                type: [string, "null"]
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
     Error:
       type: object
       required: [success, error]
@@ -185,4 +264,3 @@ components:
               type: string
             message:
               type: string
-
