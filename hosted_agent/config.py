@@ -43,6 +43,12 @@ class AgentSettings:
     persistence_api_scope: str
     persistence_api_timeout_seconds: int
     persistence_api_retries: int
+    user_prompt: str | None = None
+    batch_storage_account_url: str | None = None
+    batch_container: str | None = None
+    batch_blob_name: str | None = None
+    batch_value_column: str | None = None
+    batch_blob_version_id: str | None = None
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -98,6 +104,27 @@ class AgentSettings:
             if urlparse(account_url).scheme != "https":
                 raise ValueError("PROMPT_STORAGE_ACCOUNT_URL must use HTTPS.")
 
+        batch_storage_account_url = os.getenv("BATCH_STORAGE_ACCOUNT_URL", "").strip() or None
+        batch_container = os.getenv("BATCH_CONTAINER", "").strip() or None
+        batch_blob_name = os.getenv("BATCH_BLOB_NAME", "").strip() or None
+        batch_value_column = os.getenv("BATCH_VALUE_COLUMN", "").strip() or None
+        batch_blob_version_id = os.getenv("BATCH_BLOB_VERSION_ID", "").strip() or None
+        user_prompt = os.getenv("USER_PROMPT", "").strip() or None
+        batch_configuration = (
+            batch_storage_account_url,
+            batch_container,
+            batch_blob_name,
+            batch_value_column,
+            user_prompt,
+        )
+        if any(batch_configuration) and not all(batch_configuration):
+            raise ValueError(
+                "USER_PROMPT, BATCH_STORAGE_ACCOUNT_URL, BATCH_CONTAINER, "
+                "BATCH_BLOB_NAME, and BATCH_VALUE_COLUMN must be configured together."
+            )
+        if batch_storage_account_url and urlparse(batch_storage_account_url).scheme != "https":
+            raise ValueError("BATCH_STORAGE_ACCOUNT_URL must use HTTPS.")
+
         auth_mode = os.getenv("AGENT_AUTH_MODE", "default").strip().lower()
         if auth_mode not in {"default", "managed_identity"}:
             raise ValueError("AGENT_AUTH_MODE must be 'default' or 'managed_identity'.")
@@ -133,4 +160,10 @@ class AgentSettings:
             persistence_api_scope=api_scope,
             persistence_api_timeout_seconds=_positive_int("PERSISTENCE_API_TIMEOUT_SECONDS", 15),
             persistence_api_retries=_positive_int("PERSISTENCE_API_RETRIES", 1, allow_zero=True),
+            user_prompt=user_prompt,
+            batch_storage_account_url=batch_storage_account_url,
+            batch_container=batch_container,
+            batch_blob_name=batch_blob_name,
+            batch_value_column=batch_value_column,
+            batch_blob_version_id=batch_blob_version_id,
         )

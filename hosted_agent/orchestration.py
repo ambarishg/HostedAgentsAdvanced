@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import csv
+import io
 import json
 import logging
 import time
@@ -9,10 +11,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from agent_framework import Agent, AgentResponse, AgentSession, Message
 from agent_framework.foundry import FoundryChatClient
 from agent_framework.openai import OpenAIChatOptions
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
+from azure.storage.blob import BlobServiceClient
 from pydantic import ValidationError
 
 from hosted_agent.config import AgentSettings
@@ -294,6 +299,7 @@ class HostedOrchestrator:
         self.id = str(context.request.request_id)
         self.name = context.settings.agent_name
         self.description = "Generates a validated structured result and persists it."
+        self.last_errors: list[dict[str, Any]] = []
 
     def create_session(self, *, session_id: str | None = None) -> AgentSession:
         return AgentSession(session_id=session_id)
@@ -302,6 +308,257 @@ class HostedOrchestrator:
         self, service_session_id: str, *, session_id: str | None = None
     ) -> AgentSession:
         return AgentSession(service_session_id=service_session_id, session_id=session_id)
+
+    @staticmethod
+    def _blob_credential(auth_mode: str):
+        if auth_mode == "managed_identity":
+            return ManagedIdentityCredential()
+        return DefaultAzureCredential()
+
+    @classmethod
+    def _download_blob_text(
+        cls,
+        *,
+        account_url: str,
+        container: str,
+        blob_name: str,
+        version_id: str | None = None,
+        auth_mode: str = "default",
+    ) -> str:
+        credential = cls._blob_credential(auth_mode)
+        try:
+            service = BlobServiceClient(account_url, credential=credential)
+            blob = service.get_blob_client(
+                container,
+                blob_name,
+                version_id=version_id,
+            )
+            downloader = blob.download_blob(max_concurrency=4)
+            chunks = []
+            for chunk in downloader.chunks():
+                if isinstance(chunk, memoryview):
+                    chunk = chunk.tobytes()
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                if chunk:
+                    chunks.append(chunk)
+            if not chunks:
+                raise AgentExecutionError(
+                    "blob_empty",
+                    "The configured blob contains no readable content.",
+                    status_code=422,
+                )
+            return b"".join(chunks).decode("utf-8-sig")
+        except AgentExecutionError:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive path
+            raise AgentExecutionError(
+                "blob_unavailable",
+                "The configured Azure Blob file could not be read.",
+                status_code=502,
+            ) from exc
+        finally:
+            credential.close()
+
+    @staticmethod
+    def _normalize_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @classmethod
+    def _parse_blob_rows(
+        cls,
+        text: str,
+        *,
+        value_column: str | None,
+    ) -> list[dict[str, Any]]:
+        stripped = text.strip()
+        if not stripped:
+            return []
+
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise AgentExecutionError(
+                    "blob_invalid_json",
+                    "The blob content is not valid JSON for row processing.",
+                    status_code=422,
+                ) from exc
+
+            if isinstance(parsed, list):
+                rows = [item for item in parsed if isinstance(item, dict)]
+            elif isinstance(parsed, dict):
+                rows = [parsed]
+            else:
+                rows = []
+            if not rows:
+                raise AgentExecutionError(
+                    "blob_invalid_json",
+                    "The blob content does not contain row objects.",
+                    status_code=422,
+                )
+            if not value_column or value_column not in rows[0]:
+                raise AgentExecutionError(
+                    "blob_missing_column",
+                    "The configured data column is missing from the blob file.",
+                    status_code=422,
+                )
+            return [{"value": cls._normalize_text(record.get(value_column))} for record in rows]
+
+        sample = stripped.splitlines()[0]
+        delimiter = ","
+        for candidate in ("\t", ";", "|", ","):
+            if candidate in sample and sample.count(candidate) >= 1:
+                delimiter = candidate
+                break
+
+        reader = csv.DictReader(io.StringIO(stripped, newline=""), delimiter=delimiter)
+        rows: list[dict[str, Any]] = []
+        for record in reader:
+            if record is None:
+                continue
+            rows.append({str(key): value for key, value in record.items() if key is not None})
+        if not rows:
+            return []
+
+        if not value_column or value_column not in rows[0]:
+            raise AgentExecutionError(
+                "blob_missing_column",
+                "The configured data column is missing from the blob file.",
+                status_code=422,
+            )
+        normalized_rows: list[dict[str, Any]] = []
+        for record in rows:
+            normalized_rows.append({"value": cls._normalize_text(record.get(value_column))})
+        return normalized_rows
+
+    async def process_blob_rows(
+        self,
+        *,
+        account_url: str,
+        container: str,
+        blob_name: str,
+        value_column: str,
+        user_prompt: str | None = None,
+        version_id: str | None = None,
+        auth_mode: str = "default",
+        model_agent_factory: Any | None = None,
+        persistence_tool: PersistenceApiTool | None = None,
+        raise_on_error: bool = False,
+    ) -> list[AgentExecutionResponse]:
+        blob_text = self._download_blob_text(
+            account_url=account_url,
+            container=container,
+            blob_name=blob_name,
+            version_id=version_id,
+            auth_mode=auth_mode,
+        )
+        user_prompt = user_prompt or self._context.settings.user_prompt
+        if not user_prompt:
+            raise AgentExecutionError(
+                "user_prompt_missing",
+                "USER_PROMPT must be configured to process blob rows.",
+                status_code=500,
+            )
+        rows = self._parse_blob_rows(
+            blob_text,
+            value_column=value_column,
+        )
+        if not rows:
+            return []
+
+        responses: list[AgentExecutionResponse] = []
+        self.last_errors = []
+        for index, row in enumerate(rows, start=1):
+            try:
+                row_value = row.get("value")
+                if row_value is None:
+                    raise AgentExecutionError(
+                        "blob_missing_value",
+                        "A blob row is missing the configured data column.",
+                        status_code=422,
+                    )
+                request = ExternalRequest(
+                    request_id=uuid4(),
+                    user_input=f"{user_prompt}\n\n{row_value}".strip(),
+                    metadata={
+                        "source": "blob_batch",
+                        "blob_name": blob_name,
+                        "row_number": index,
+                        "column_name": value_column,
+                    },
+                )
+                if len(request.user_input) > self._context.settings.max_input_chars:
+                    raise AgentExecutionError(
+                        "input_too_large",
+                        "The prompt and row value exceed the configured input size limit.",
+                        status_code=413,
+                    )
+                row_context = RequestContext(
+                    request=request,
+                    prompt=self._context.prompt,
+                    started_at=time.monotonic(),
+                    settings=self._context.settings,
+                )
+                agent = None
+                if model_agent_factory is not None:
+                    candidate = model_agent_factory(row_context)
+                    if asyncio.iscoroutine(candidate):
+                        candidate = await candidate
+                    agent = candidate
+                response = await execute_request(
+                    row_context,
+                    model_agent=agent,
+                    persistence_tool=persistence_tool,
+                )
+                responses.append(response)
+            except AgentExecutionError as exc:
+                logger.warning(
+                    "Blob row execution failed",
+                    extra={
+                        "blob_name": blob_name,
+                        "row_number": index,
+                        "error_code": exc.code,
+                    },
+                )
+                self.last_errors.append({"row_number": index, "error": str(exc), "code": exc.code})
+                if raise_on_error:
+                    raise
+            except Exception as exc:  # pragma: no cover - defensive path
+                error = AgentExecutionError(
+                    "blob_row_failed",
+                    f"Failed to process blob row {index}: {exc}",
+                    status_code=502,
+                )
+                logger.exception(
+                    "Blob row execution failed",
+                    extra={
+                        "blob_name": blob_name,
+                        "row_number": index,
+                        "error_code": error.code,
+                    },
+                )
+                self.last_errors.append(
+                    {"row_number": index, "error": str(error), "code": error.code}
+                )
+                if raise_on_error:
+                    raise error from exc
+        return responses
+
+    async def process_blob_file(
+        self,
+        **kwargs: Any,
+    ) -> list[AgentExecutionResponse]:
+        return await self.process_blob_rows(**kwargs)
+
+    async def run_batch_from_blob(
+        self,
+        **kwargs: Any,
+    ) -> list[AgentExecutionResponse]:
+        return await self.process_blob_rows(**kwargs)
 
     async def run(
         self,
@@ -316,6 +573,36 @@ class HostedOrchestrator:
         if stream:
             raise AgentExecutionError(
                 "unsupported_stream", "Streaming is not supported.", status_code=400
+            )
+        if self._context.settings.batch_blob_name:
+            settings = self._context.settings
+            assert (
+                settings.batch_storage_account_url
+                and settings.batch_container
+                and settings.batch_value_column
+                and settings.user_prompt
+            )
+            responses = await self.process_blob_rows(
+                account_url=settings.batch_storage_account_url,
+                container=settings.batch_container,
+                blob_name=settings.batch_blob_name,
+                value_column=settings.batch_value_column,
+                user_prompt=settings.user_prompt,
+                version_id=settings.batch_blob_version_id,
+                auth_mode=settings.auth_mode,
+            )
+            content = json.dumps(
+                {
+                    "responses": [response.model_dump(mode="json") for response in responses],
+                    "errors": self.last_errors,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            return AgentResponse(
+                messages=Message("assistant", [content]),
+                response_id=self.id,
+                agent_id=self.id,
             )
         try:
             response = await execute_request(self._context)

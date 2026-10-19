@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from agent_framework import AgentResponse, Message
 
-from hosted_agent.orchestration import AgentExecutionError, execute_request
+from hosted_agent.orchestration import AgentExecutionError, HostedOrchestrator, execute_request
 from hosted_agent.persistence_client import PersistenceToolError
 from hosted_agent.schemas import ModelAgentOutput
 
@@ -166,3 +166,128 @@ async def test_api_timeout_never_returns_success(request_context) -> None:
             model_agent=model,
             persistence_tool=FailedPersistenceTool(),
         )
+
+
+@pytest.mark.asyncio
+async def test_blob_file_rows_are_processed_individually(request_context, monkeypatch) -> None:
+    csv_text = "prompt,customer\nBase: {prompt},Alice\nBase: {prompt},Bob\n"
+
+    class Blob:
+        def download_blob(self, **kwargs):
+            return type(
+                "Downloader",
+                (),
+                {"chunks": lambda self: [csv_text.encode("utf-8")]},
+            )()
+
+    class Service:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_blob_client(self, container, name, **kwargs):
+            return Blob()
+
+    monkeypatch.setattr("hosted_agent.orchestration.BlobServiceClient", Service)
+
+    orchestrator = HostedOrchestrator(request_context)
+    received_inputs = []
+
+    async def factory(row_context):
+        received_inputs.append(row_context.request.user_input)
+        return FakeModelAgent(
+            AgentResponse(
+                messages=Message(
+                    "assistant",
+                    [
+                        json.dumps(
+                            {
+                                "schema_version": "generic-v1",
+                                "result_json": '{"answer":"processed"}',
+                            }
+                        )
+                    ],
+                ),
+                value=ModelAgentOutput(
+                    schema_version="generic-v1",
+                    result_json='{"answer":"processed"}',
+                ),
+                finish_reason="stop",
+                response_id=row_context.request.request_id.hex,
+            )
+        )
+
+    responses = await orchestrator.process_blob_rows(
+        account_url="https://example.blob.core.windows.net",
+        container="input",
+        blob_name="customers.csv",
+        value_column="customer",
+        user_prompt="Process this customer:",
+        model_agent_factory=factory,
+        persistence_tool=FakePersistenceTool(),
+    )
+
+    assert len(responses) == 2
+    assert orchestrator.last_errors == []
+    assert received_inputs == [
+        "Process this customer:\n\nAlice",
+        "Process this customer:\n\nBob",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_blob_row_errors_are_recorded_without_aborting(request_context, monkeypatch) -> None:
+    csv_text = "prompt,customer\nValidRow,ok\nBadRow,\n"
+
+    class Blob:
+        def download_blob(self, **kwargs):
+            return type(
+                "Downloader",
+                (),
+                {"chunks": lambda self: [csv_text.encode("utf-8")]},
+            )()
+
+    class Service:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_blob_client(self, container, name, **kwargs):
+            return Blob()
+
+    monkeypatch.setattr("hosted_agent.orchestration.BlobServiceClient", Service)
+
+    orchestrator = HostedOrchestrator(request_context)
+
+    async def factory(row_context):
+        if "BadRow" in row_context.request.user_input:
+            raise ValueError("row failed")
+        return FakeModelAgent(
+            AgentResponse(
+                messages=Message(
+                    "assistant",
+                    [
+                        json.dumps(
+                            {"schema_version": "generic-v1", "result_json": '{"answer":"ok"}'}
+                        )
+                    ],
+                ),
+                value=ModelAgentOutput(
+                    schema_version="generic-v1",
+                    result_json='{"answer":"ok"}',
+                ),
+                finish_reason="stop",
+                response_id=row_context.request.request_id.hex,
+            )
+        )
+
+    responses = await orchestrator.process_blob_rows(
+        account_url="https://example.blob.core.windows.net",
+        container="input",
+        blob_name="customers.csv",
+        value_column="customer",
+        user_prompt="Process this customer:",
+        model_agent_factory=factory,
+        persistence_tool=FakePersistenceTool(),
+    )
+
+    assert len(responses) == 1
+    assert len(orchestrator.last_errors) == 1

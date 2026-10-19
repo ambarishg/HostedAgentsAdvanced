@@ -68,6 +68,8 @@ SYSTEM_PROMPT_VERSION=local-v1
 
 The prompt is loaded once per invocation. Its SHA-256 and version are recorded; prompt contents are not returned, persisted, or logged. A missing or whitespace-only prompt fails the invocation. The blob option requires Blob versioning and an immutable `PROMPT_VERSION` (the Azure Blob version ID); configure the Hosted Agent identity with `Storage Blob Data Reader`.
 
+To process rows from an Azure Blob file, set `USER_PROMPT`, `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, and `BATCH_VALUE_COLUMN`. The `USER_PROMPT` is the shared instruction, and the configured value column supplies each row's data; they are kept separate. Optionally set `BATCH_BLOB_VERSION_ID` to pin an immutable input version. When these batch settings are enabled, each invocation processes that blob, generates one response per row, and persists each result. Grant the agent identity Blob Data Reader access to the input container.
+
 Local identity uses `DefaultAzureCredential`. In Azure set `AGENT_AUTH_MODE=managed_identity`; grant the Hosted Agent identity access to the model, Blob Storage (when used), and the API's Entra application. Never grant it PostgreSQL access.
 
 ### Run and test
@@ -204,6 +206,7 @@ Use `.env.example` as the canonical list of settings. Required settings are vali
 | Foundry | `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_MODEL_DEPLOYMENT_NAME`, `AGENT_NAME`, `AGENT_VERSION` |
 | Output schema | `RESULT_SCHEMA_VERSION` and matching `PERSISTENCE_SCHEMA_VERSION` |
 | Prompt | `SYSTEM_PROMPT_SOURCE=file|blob`; file path/version or Blob account/container/name/immutable version ID |
+| Blob batch input | `USER_PROMPT`, `BATCH_STORAGE_ACCOUNT_URL`, `BATCH_CONTAINER`, `BATCH_BLOB_NAME`, `BATCH_VALUE_COLUMN`, optional `BATCH_BLOB_VERSION_ID` |
 | API client | `PERSISTENCE_API_URL`, `PERSISTENCE_API_SCOPE`, timeout and bounded transient retry count |
 | API auth | `API_TENANT_ID`, `API_AUDIENCE`, and required delegated scope or application role; optional allowed client IDs |
 | PostgreSQL | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGSCHEMA`, `PGUSER`, `PG_AUTH_MODE`, pool and connect limits |

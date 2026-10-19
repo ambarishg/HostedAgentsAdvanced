@@ -1,0 +1,72 @@
+# Run locally on Windows
+
+You’ll need Python 3.12, `uv`, Node.js, Azure CLI, Azure Functions Core Tools v4, a Foundry project/model, and an Azure Database for PostgreSQL server.
+
+## Configure
+
+From the repository root:
+
+```powershell
+Set-Location C:\Ambarish\HostedAgentsAdvanced
+uv python install 3.12
+$env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
+uv sync --python 3.12
+Copy-Item .env.example .env
+Copy-Item local.settings.example.json local.settings.json
+```
+
+In `.env`, set your Foundry endpoint and model deployment, plus PostgreSQL host, user, and password. Use the API and tenant values configured for this project:
+
+```dotenv
+PERSISTENCE_API_SCOPE=api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default
+API_TENANT_ID=0f942ca0-ebef-4f26-80f8-f501d599ba90
+API_AUDIENCE=api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda
+PG_AUTH_MODE=password
+```
+
+Set the same `API_TENANT_ID`, `API_AUDIENCE`, and PostgreSQL connection values—including `PG_AUTH_MODE=password`—in `local.settings.json`. Keep both files private and uncommitted.
+
+Sign in and apply the database migration:
+
+```powershell
+az login --tenant 0f942ca0-ebef-4f26-80f8-f501d599ba90 --scope api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default
+uv run alembic upgrade head
+```
+
+## Start the services
+
+Open three PowerShell windows at the repository root. In the first, start local storage:
+
+```powershell
+az login --tenant 0f942ca0-ebef-4f26-80f8-f501d599ba90 --scope api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default
+```
+
+In the second, start the persistence API:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
+func start
+```
+
+In the third, start the agent:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
+uv run python -m hosted_agent.entrypoint
+```
+
+## Send a test request
+
+In another PowerShell window:
+
+```powershell
+$body = @{
+  user_input = "Summarize the benefit of a transactional database write."
+  metadata = @{ source = "local-test" }
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Uri http://localhost:8088/invocations -Method Post `
+  -ContentType "application/json" -Body $body
+```
+
+For setup details and troubleshooting, see [the full Windows deployment guide](local-deployment-windows.md).
