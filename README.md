@@ -7,7 +7,7 @@ This repository contains two independently runnable components:
 
 The agent accepts a caller-owned request ID and user input, snapshots a configured external prompt, calls a Foundry model for a typed JSON result, validates the result, and then invokes the persistence API. The agent has no PostgreSQL driver or database credential path. It returns a success response only after the API confirms a committed database record.
 
-The PCR route is an initial generic example. The model result is intentionally generic (`result` is a JSON object); no PCR-specific business fields are assumed. Extend `AgentResult` and increment `RESULT_SCHEMA_VERSION` and `PERSISTENCE_SCHEMA_VERSION` together when introducing a strict business model.
+The Orchestrator returns a PCR classification in `result`, with the fields and category values defined in `prompts/system_prompt.example.txt`. The classification is validated against a strict schema before persistence. An empty transcript is accepted and produces a `Not identified` result with Low confidence and an explanatory rationale.
 
 ## Runtime contract
 
@@ -28,7 +28,7 @@ For single-request invocation, `user_input` must contain non-whitespace text. In
 
 ```json
 {
-  "response": "{\"success\":true,\"status\":\"completed\",\"request_id\":\"...\",\"interaction_id\":\"...\",\"agent_name\":\"pcr-agent\",\"agent_version\":\"1.0.0\",\"prompt_version\":\"local-v1\",\"schema_version\":\"generic-v1\",\"result\":{\"answer\":\"...\"},\"summary\":\"...\",\"warnings\":[],\"duration_ms\":34,\"completed_at\":\"...\"}"
+  "response": "{\"success\":true,\"status\":\"completed\",\"request_id\":\"...\",\"interaction_id\":\"...\",\"agent_name\":\"pcr-agent\",\"agent_version\":\"1.0.0\",\"prompt_version\":\"local-v1\",\"schema_version\":\"generic-v1\",\"result\":{\"primary_contact_reason\":\"Not identified\",\"confidence\":\"Low\",\"evidence\":[],\"rationale\":\"The transcript does not provide enough information to identify a primary contact reason.\",\"secondary_reasons\":[]},\"summary\":null,\"warnings\":[],\"duration_ms\":34,\"completed_at\":\"...\"}"
 }
 ```
 

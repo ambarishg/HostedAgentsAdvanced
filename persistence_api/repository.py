@@ -89,7 +89,7 @@ class InteractionRepository:
                 AgentInteraction.request_id,
                 AgentInteraction.agent_name,
                 AgentInteraction.user_input,
-                AgentInteraction.agent_response,
+                AgentInteraction.result_json,
             )
             .order_by(AgentInteraction.created_at.desc(), AgentInteraction.id.desc())
             .limit(limit + 1)

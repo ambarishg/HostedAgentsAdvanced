@@ -25,7 +25,7 @@ class SaveAgentResultArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID
-    user_input: str = Field(min_length=1)
+    user_input: str
     result: AgentResult
     agent_name: str = Field(min_length=1, max_length=128)
     agent_version: str = Field(min_length=1, max_length=128)

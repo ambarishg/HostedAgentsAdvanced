@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -9,7 +10,24 @@ from agent_framework import AgentResponse, Message
 
 from hosted_agent.orchestration import AgentExecutionError, HostedOrchestrator, execute_request
 from hosted_agent.persistence_client import PersistenceToolError
-from hosted_agent.schemas import ModelAgentOutput
+from hosted_agent.schemas import ModelAgentOutput, PCRClassification
+
+PCR_RESULT = {
+    "primary_contact_reason": "Policy information / clarification",
+    "confidence": "High",
+    "evidence": ["The customer asks for clarification about their policy."],
+    "rationale": "The customer contacted L&G to understand their policy.",
+    "secondary_reasons": [],
+}
+
+
+def make_model_output(
+    *, schema_version: str = "generic-v1", result_json: dict | None = None
+) -> ModelAgentOutput:
+    return ModelAgentOutput(
+        schema_version=schema_version,
+        result_json=PCRClassification.model_validate(result_json or PCR_RESULT),
+    )
 
 
 class FakeModelAgent:
@@ -47,9 +65,9 @@ async def test_success_is_returned_only_after_commit_confirmation(request_contex
         AgentResponse(
             messages=Message(
                 "assistant",
-                ['{"schema_version":"generic-v1","result_json":"{\\"answer\\":\\"ok\\"}"}'],
+                [json.dumps({"schema_version": "generic-v1", "result_json": PCR_RESULT})],
             ),
-            value=ModelAgentOutput(schema_version="generic-v1", result_json='{"answer":"ok"}'),
+            value=make_model_output(),
             finish_reason="stop",
             response_id="response-123",
         )
@@ -64,8 +82,38 @@ async def test_success_is_returned_only_after_commit_confirmation(request_contex
     assert response.interaction_id == UUID(int=1)
     assert persistence.saved["request_id"] == request_context.request.request_id
     assert persistence.saved["prompt_hash"] == request_context.prompt.sha256
-    assert persistence.saved["result"].result == {"answer": "ok"}
+    assert persistence.saved["result"].result == PCR_RESULT
     assert model.inputs == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_empty_transcript_returns_persisted_not_identified_result(request_context) -> None:
+    class UnexpectedModel:
+        async def run(self, user_input: str):
+            pytest.fail("The model should not be called for an empty transcript.")
+
+    context = replace(
+        request_context,
+        request=request_context.request.model_copy(update={"user_input": "  "}),
+    )
+    persistence = FakePersistenceTool()
+
+    response = await execute_request(
+        context, model_agent=UnexpectedModel(), persistence_tool=persistence
+    )
+
+    assert response.result == {
+        "primary_contact_reason": "Not identified",
+        "confidence": "Low",
+        "evidence": [],
+        "rationale": (
+            "The transcript does not provide enough information to identify a "
+            "primary contact reason."
+        ),
+        "secondary_reasons": [],
+    }
+    assert persistence.saved["user_input"] == "  "
+    assert persistence.saved["result"].result == response.result
 
 
 @pytest.mark.asyncio
@@ -85,21 +133,30 @@ async def test_invalid_structured_output_is_not_persisted(request_context) -> No
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("result_json", ["[]", "not json", '{"value": NaN}'])
-async def test_invalid_result_json_is_not_persisted(request_context, result_json) -> None:
+@pytest.mark.parametrize(
+    "result_json",
+    [
+        "Classified as Communication support request with high confidence.",
+        {"answer": "Classified as Communication support request with high confidence."},
+        {
+            **PCR_RESULT,
+            "primary_contact_reason": "Communication support",
+        },
+    ],
+)
+async def test_invalid_pcr_output_is_not_persisted(request_context, result_json) -> None:
     model = FakeModelAgent(
         AgentResponse(
             messages=Message(
                 "assistant",
                 [json.dumps({"schema_version": "generic-v1", "result_json": result_json})],
             ),
-            value=ModelAgentOutput(schema_version="generic-v1", result_json=result_json),
             finish_reason="stop",
         )
     )
     persistence = FakePersistenceTool()
 
-    with pytest.raises(AgentExecutionError, match="valid JSON object"):
+    with pytest.raises(AgentExecutionError, match="valid structured JSON"):
         await execute_request(request_context, model_agent=model, persistence_tool=persistence)
 
     assert persistence.saved is None
@@ -111,9 +168,9 @@ async def test_schema_version_mismatch_is_not_persisted(request_context) -> None
         AgentResponse(
             messages=Message(
                 "assistant",
-                [json.dumps({"schema_version": "v2", "result_json": "{}"})],
+                [json.dumps({"schema_version": "v2", "result_json": PCR_RESULT})],
             ),
-            value=ModelAgentOutput(schema_version="v2", result_json="{}"),
+            value=make_model_output(schema_version="v2"),
             finish_reason="stop",
         )
     )
@@ -153,9 +210,9 @@ async def test_api_timeout_never_returns_success(request_context) -> None:
         AgentResponse(
             messages=Message(
                 "assistant",
-                ['{"schema_version":"generic-v1","result_json":"{\\"answer\\":\\"ok\\"}"}'],
+                [json.dumps({"schema_version": "generic-v1", "result_json": PCR_RESULT})],
             ),
-            value=ModelAgentOutput(schema_version="generic-v1", result_json='{"answer":"ok"}'),
+            value=make_model_output(),
             finish_reason="stop",
         )
     )
@@ -202,15 +259,12 @@ async def test_blob_file_rows_are_processed_individually(request_context, monkey
                         json.dumps(
                             {
                                 "schema_version": "generic-v1",
-                                "result_json": '{"answer":"processed"}',
+                                "result_json": PCR_RESULT,
                             }
                         )
                     ],
                 ),
-                value=ModelAgentOutput(
-                    schema_version="generic-v1",
-                    result_json='{"answer":"processed"}',
-                ),
+                value=make_model_output(),
                 finish_reason="stop",
                 response_id=row_context.request.request_id.hex,
             )
@@ -260,16 +314,9 @@ async def test_blob_row_errors_are_recorded_without_aborting(request_context, mo
             AgentResponse(
                 messages=Message(
                     "assistant",
-                    [
-                        json.dumps(
-                            {"schema_version": "generic-v1", "result_json": '{"answer":"ok"}'}
-                        )
-                    ],
+                    [json.dumps({"schema_version": "generic-v1", "result_json": PCR_RESULT})],
                 ),
-                value=ModelAgentOutput(
-                    schema_version="generic-v1",
-                    result_json='{"answer":"ok"}',
-                ),
+                value=make_model_output(),
                 finish_reason="stop",
                 response_id=row_context.request.request_id.hex,
             )
@@ -322,15 +369,12 @@ async def test_local_file_column_values_are_processed_and_persisted(
                         json.dumps(
                             {
                                 "schema_version": "generic-v1",
-                                "result_json": '{"answer":"processed"}',
+                                "result_json": PCR_RESULT,
                             }
                         )
                     ],
                 ),
-                value=ModelAgentOutput(
-                    schema_version="generic-v1",
-                    result_json='{"answer":"processed"}',
-                ),
+                value=make_model_output(),
                 finish_reason="stop",
                 response_id=row_context.request.request_id.hex,
             )
@@ -365,9 +409,9 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
             AgentResponse(
                 messages=Message(
                     "assistant",
-                    [json.dumps({"schema_version": "generic-v1", "result_json": "{}"})],
+                    [json.dumps({"schema_version": "generic-v1", "result_json": PCR_RESULT})],
                 ),
-                value=ModelAgentOutput(schema_version="generic-v1", result_json="{}"),
+                value=make_model_output(),
                 finish_reason="stop",
             )
         )
@@ -379,15 +423,19 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
         persistence_tool=FakePersistenceTool(),
     )
 
-    assert len(responses) == 1
-    assert received_inputs == ["Process Alice"]
-    assert orchestrator.last_errors == [
-        {
-            "row_number": 2,
-            "error": "A row is missing the configured data column.",
-            "code": "local_file_missing_value",
-        }
-    ]
+    assert len(responses) == 2
+    assert received_inputs == ["Process Alice", ""]
+    assert responses[1].result == {
+        "primary_contact_reason": "Not identified",
+        "confidence": "Low",
+        "evidence": [],
+        "rationale": (
+            "The transcript does not provide enough information to identify a "
+            "primary contact reason."
+        ),
+        "secondary_reasons": [],
+    }
+    assert orchestrator.last_errors == []
 
 
 @pytest.mark.asyncio

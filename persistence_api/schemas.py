@@ -13,7 +13,7 @@ class PersistenceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: UUID
-    user_input: str = Field(min_length=1, max_length=100_000)
+    user_input: str = Field(max_length=100_000)
     result_json: dict[str, Any]
     agent_name: str = Field(min_length=1, max_length=128)
     agent_version: str | None = Field(default=None, max_length=128)
@@ -26,13 +26,6 @@ class PersistenceRequest(BaseModel):
     input_tokens: int | None = Field(default=None, ge=0, le=2**63 - 1)
     output_tokens: int | None = Field(default=None, ge=0, le=2**63 - 1)
     provider_response_id: str | None = Field(default=None, max_length=512)
-
-    @field_validator("user_input")
-    @classmethod
-    def nonblank_input(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("user_input must not be empty.")
-        return value
 
     @field_validator("result_json")
     @classmethod

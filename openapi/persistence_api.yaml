@@ -172,7 +172,6 @@ components:
           format: uuid
         user_input:
           type: string
-          minLength: 1
           maxLength: 100000
         result_json:
           $ref: "#/components/schemas/AgentResult"

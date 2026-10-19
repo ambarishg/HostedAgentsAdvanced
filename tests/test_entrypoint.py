@@ -13,12 +13,13 @@ from hosted_agent.prompt_provider import PromptSnapshot
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("user_input", ["question", ""])
 async def test_invocations_parser_validates_contract_and_pins_prompt(
-    agent_settings, monkeypatch
+    agent_settings, monkeypatch, user_input
 ) -> None:
     body = json.dumps(
         {
-            "user_input": "question",
+            "user_input": user_input,
             "metadata": {"source": "test"},
         }
     ).encode()
@@ -50,9 +51,9 @@ async def test_invocations_parser_validates_contract_and_pins_prompt(
     parsed = await entrypoint.parse_request(request)
     hosted_agent = entrypoint.create_agent()
 
-    assert parsed.messages == "question"
+    assert parsed.messages == user_input
     assert isinstance(hosted_agent, HostedOrchestrator)
-    assert hosted_agent._context.request.user_input == "question"
+    assert hosted_agent._context.request.user_input == user_input
     assert hosted_agent._context.prompt.version == "prompt-7"
 
 
