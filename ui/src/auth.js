@@ -1,0 +1,118 @@
+import {
+  InteractionRequiredAuthError,
+  PublicClientApplication,
+} from '@azure/msal-browser';
+
+const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID?.trim();
+const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID?.trim();
+const redirectUri = import.meta.env.VITE_ENTRA_REDIRECT_URI?.trim()
+  || `${window.location.origin}/redirect.html`;
+const persistenceScope = import.meta.env.VITE_PERSISTENCE_API_SCOPE?.trim();
+
+export const isEntraConfigured = Boolean(clientId && tenantId && persistenceScope);
+export const entraConfigurationKeys = [
+  !clientId && 'VITE_ENTRA_CLIENT_ID',
+  !tenantId && 'VITE_ENTRA_TENANT_ID',
+  !persistenceScope && 'VITE_PERSISTENCE_API_SCOPE',
+].filter(Boolean);
+
+const msalInstance = isEntraConfigured
+  ? new PublicClientApplication({
+    auth: {
+      clientId,
+      authority: `https://login.microsoftonline.com/${tenantId}`,
+      redirectUri,
+    },
+    cache: {
+      cacheLocation: 'sessionStorage',
+    },
+  })
+  : null;
+
+let initializationPromise;
+let interactiveQueue = Promise.resolve();
+
+async function withInteractiveLock(operation) {
+  const previous = interactiveQueue;
+  let release;
+  interactiveQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
+export async function initializeEntra() {
+  if (!msalInstance) return null;
+
+  initializationPromise ??= msalInstance.initialize().then(() => {
+    const account = msalInstance.getActiveAccount()
+      || msalInstance.getAllAccounts()[0]
+      || null;
+    if (account) msalInstance.setActiveAccount(account);
+    return account;
+  });
+
+  return initializationPromise;
+}
+
+export async function signInToEntra() {
+  if (!msalInstance || !persistenceScope) {
+    throw new Error('Entra sign-in is not configured for this UI.');
+  }
+
+  await initializeEntra();
+  return withInteractiveLock(async () => {
+    const response = await msalInstance.loginPopup({ scopes: [persistenceScope] });
+    msalInstance.setActiveAccount(response.account);
+    return response.account;
+  });
+}
+
+export async function signOutOfEntra() {
+  if (!msalInstance) return;
+
+  const account = msalInstance.getActiveAccount();
+  await withInteractiveLock(
+    () => msalInstance.logoutPopup({ account, postLogoutRedirectUri: redirectUri }),
+  );
+}
+
+export async function acquirePersistenceToken() {
+  if (!msalInstance || !persistenceScope) {
+    throw new Error('Entra sign-in is not configured for this UI.');
+  }
+
+  const account = msalInstance.getActiveAccount() || await initializeEntra();
+  if (!account) throw new Error('Sign in with your work account to view interactions.');
+
+  try {
+    const response = await msalInstance.acquireTokenSilent({
+      account,
+      scopes: [persistenceScope],
+    });
+    return response.accessToken;
+  } catch (error) {
+    if (!(error instanceof InteractionRequiredAuthError)) throw error;
+    return withInteractiveLock(async () => {
+      try {
+        const response = await msalInstance.acquireTokenSilent({
+          account,
+          scopes: [persistenceScope],
+        });
+        return response.accessToken;
+      } catch (retryError) {
+        if (!(retryError instanceof InteractionRequiredAuthError)) throw retryError;
+        const response = await msalInstance.acquireTokenPopup({
+          account,
+          scopes: [persistenceScope],
+        });
+        return response.accessToken;
+      }
+    });
+  }
+}

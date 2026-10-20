@@ -11,9 +11,13 @@ Set-Location C:\Ambarish\HostedAgentsAdvanced
 uv python install 3.12
 $env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
 uv sync --python 3.12
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& .\.venv-py312\Scripts\Activate.ps1
 Copy-Item .env.example .env
 Copy-Item local.settings.example.json local.settings.json
 ```
+
+Run the execution-policy and activation commands again in each new PowerShell window that runs Python or Azure Functions. The policy change applies only to that PowerShell process.
 
 In `.env`, set your Foundry endpoint and model deployment, plus PostgreSQL host, user, and password. Use the API and tenant values configured for this project:
 
@@ -30,32 +34,42 @@ Sign in and apply the database migration:
 
 ```powershell
 az login --tenant 0f942ca0-ebef-4f26-80f8-f501d599ba90 --scope api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default
-uv run alembic upgrade head
+alembic upgrade head
 ```
 
 ## Start the services
 
-Open three PowerShell windows at the repository root. In the first, start local storage:
+Open three PowerShell windows at the repository root. In the first, start Azurite for the local Functions host:
 
 ```powershell
-az login --tenant 0f942ca0-ebef-4f26-80f8-f501d599ba90 --scope api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default
+npx azurite --silent --location .azurite --debug .azurite\debug.log
 ```
 
 In the second, start the persistence API:
 
 ```powershell
-$env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& .\.venv-py312\Scripts\Activate.ps1
 func start
 ```
 
 In the third, start the agent:
 
 ```powershell
-$env:UV_PROJECT_ENVIRONMENT = ".venv-py312"
-uv run python -m hosted_agent.entrypoint
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+& .\.venv-py312\Scripts\Activate.ps1
+python -m hosted_agent.entrypoint
 ```
 
 ## Start the React UI
+
+Before starting the UI, configure the SPA registration, then create and fill in its local settings from the repository root:
+
+```powershell
+Copy-Item .\ui\.env.example .\ui\.env.local
+```
+
+Set the tenant, client, and API scope values described in [Automatic Entra sign-in for the UI](local-deployment-windows.md#automatic-entra-sign-in-for-the-ui-msal-rollout). Never put access tokens or client secrets in a Vite environment file.
 
 Open a fourth PowerShell window in the repository root and run:
 
@@ -75,10 +89,6 @@ The UI is configured to submit requests to the Hosted Agent at `http://localhost
 
 Open **Agent Interaction History** in the UI to see persisted interactions, including each interaction's Result JSON.
 
-**Current authentication behavior:** the UI does not yet have MSAL sign-in wired in, so the history page still requires a short-lived Entra access token in its **Persistence API access token** field. For the detailed setup to replace this with browser sign-in—including app registrations, permissions, local redirect URI, and deployment settings—see [Automatic Entra sign-in for the UI](local-deployment-windows.md#automatic-entra-sign-in-for-the-ui-msal-rollout).
-
-For temporary local testing, obtain a token for the API's delegated scope using the instructions in the full Windows deployment guide. Do not save a token in source code or a Vite environment file.
-
 ## Send a test request
 
 In another PowerShell window:
@@ -94,10 +104,3 @@ Invoke-RestMethod -Uri http://localhost:8088/invocations -Method Post `
 ```
 
 For setup details and troubleshooting, see [the full Windows deployment guide](local-deployment-windows.md).
-
-
-$token = az account get-access-token `
-  --scope "api://75d2fd2d-a0ed-4767-8a0e-d6b3aa80fcda/.default" `
-  --query accessToken -o tsv
-
-echo $token > token.txt

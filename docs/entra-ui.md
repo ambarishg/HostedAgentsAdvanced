@@ -1,0 +1,3 @@
+The current UI does not yet include MSAL sign-in; until that frontend integration is added, get a token for `PERSISTENCE_API_SCOPE` and paste it into the UI's **Persistence API access token** field.
+
+The UI should include the MSAL sign-in flow, which will allow users to authenticate and obtain the necessary access token for the Persistence API. Once the MSAL integration is complete, users will be able to sign in directly through the UI, eliminating the need to manually obtain and paste the token.

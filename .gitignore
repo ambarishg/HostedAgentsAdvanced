@@ -15,6 +15,7 @@ ui/dist/
 ui/.vite/
 ui/.env
 ui/.env.*
+!ui/.env.example
 ui/npm-debug.log*
 
 .python_packages

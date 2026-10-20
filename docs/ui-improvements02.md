@@ -1,0 +1,3 @@
+For the agent interaction screen, provide a clear and organized layout that allows users to easily view and manage their interactions with the agent. 
+
+Break down the Result JSON into individual components and display them in a user-friendly format. Use collapsible sections or tabs to group related information and reduce visual clutter. Include options for users to filter, sort, and search through their interactions for better accessibility.

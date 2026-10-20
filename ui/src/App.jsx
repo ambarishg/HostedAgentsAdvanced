@@ -1,4 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  acquirePersistenceToken,
+  entraConfigurationKeys,
+  initializeEntra,
+  isEntraConfigured,
+  signInToEntra,
+  signOutOfEntra,
+} from './auth';
 
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
@@ -39,8 +47,11 @@ function App() {
   const [userInput, setUserInput] = useState('');
   const [agentUrl, setAgentUrl] = useState(defaultAgentUrl);
   const [historyUrl, setHistoryUrl] = useState(defaultHistoryUrl);
-  const [historyToken, setHistoryToken] = useState('');
   const [page, setPage] = useState('home');
+  const [authAccount, setAuthAccount] = useState(null);
+  const [authReady, setAuthReady] = useState(!isEntraConfigured);
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('Your agent is ready when you are.');
   const [isLoading, setIsLoading] = useState(false);
@@ -50,8 +61,67 @@ function App() {
   const [historyError, setHistoryError] = useState('');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [hasMoreInteractions, setHasMoreInteractions] = useState(false);
+  const [interactionSearch, setInteractionSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState('');
+  const [interactionSort, setInteractionSort] = useState('newest');
 
-  const loadInteractions = async (offset = 0, append = false) => {
+  const agentNames = useMemo(
+    () => [...new Set(interactions.map(({ agent_name: agentName }) => agentName).filter(Boolean))]
+      .sort((first, second) => first.localeCompare(second)),
+    [interactions],
+  );
+
+  const visibleInteractions = useMemo(() => {
+    const query = interactionSearch.trim().toLocaleLowerCase();
+    const filtered = interactions.filter((interaction) => {
+      const matchesAgent = !agentFilter || interaction.agent_name === agentFilter;
+      const searchableContent = [
+        interaction.request_id,
+        interaction.agent_name,
+        interaction.user_input,
+        JSON.stringify(interaction.result_json),
+      ].join(' ').toLocaleLowerCase();
+      return matchesAgent && (!query || searchableContent.includes(query));
+    });
+
+    if (interactionSort === 'oldest') return filtered.slice().reverse();
+    if (interactionSort === 'agent-asc' || interactionSort === 'agent-desc') {
+      const direction = interactionSort === 'agent-asc' ? 1 : -1;
+      return filtered.slice().sort(
+        (first, second) => direction * (first.agent_name || '').localeCompare(second.agent_name || ''),
+      );
+    }
+    return filtered;
+  }, [interactions, interactionSearch, agentFilter, interactionSort]);
+
+  useEffect(() => {
+    let isMounted = true;
+    initializeEntra()
+      .then((account) => {
+        if (isMounted) setAuthAccount(account);
+      })
+      .catch((initializationError) => {
+        if (isMounted) setAuthError(initializationError.message || 'Unable to initialize Microsoft sign-in.');
+      })
+      .finally(() => {
+        if (isMounted) setAuthReady(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const loadInteractions = async (offset = 0, append = false, isAuthenticated = Boolean(authAccount)) => {
+    if (!isAuthenticated) {
+      setHistoryError(
+        isEntraConfigured
+          ? 'Sign in with your work account to view interactions.'
+          : `Configure ${entraConfigurationKeys.join(', ')} to enable Microsoft sign-in.`,
+      );
+      return;
+    }
+
     setIsHistoryLoading(true);
     setHistoryError('');
     if (!append) {
@@ -61,8 +131,9 @@ function App() {
 
     try {
       const separator = historyUrl.includes('?') ? '&' : '?';
+      const token = await acquirePersistenceToken();
       const response = await fetch(`${historyUrl}${separator}limit=100&offset=${offset}`, {
-        headers: historyToken ? { Authorization: `Bearer ${historyToken}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       const rawText = await response.text();
       if (!response.ok) {
@@ -84,7 +155,36 @@ function App() {
 
   const openInteractions = () => {
     setPage('interactions');
-    loadInteractions();
+    if (authAccount) loadInteractions();
+  };
+
+  const handleSignIn = async () => {
+    setIsAuthBusy(true);
+    setAuthError('');
+    try {
+      const account = await signInToEntra();
+      setAuthAccount(account);
+      if (page === 'interactions') await loadInteractions(0, false, true);
+    } catch (signInError) {
+      setAuthError(signInError.message || 'Unable to sign in with Microsoft.');
+    } finally {
+      setIsAuthBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setIsAuthBusy(true);
+    setAuthError('');
+    try {
+      await signOutOfEntra();
+      setAuthAccount(null);
+      setInteractions([]);
+      setHasMoreInteractions(false);
+    } catch (signOutError) {
+      setAuthError(signOutError.message || 'Unable to sign out.');
+    } finally {
+      setIsAuthBusy(false);
+    }
   };
 
   const handleSubmit = async (event, batchMode = false) => {
@@ -173,6 +273,21 @@ function App() {
             Agent interactions
           </button>
         </nav>
+        {isEntraConfigured && (
+          <div className="auth-controls">
+            {authAccount && <span className="signed-in-user">{authAccount.name || authAccount.username}</span>}
+            <button
+              type="button"
+              className={authAccount ? 'auth-button auth-button--quiet' : 'auth-button'}
+              onClick={authAccount ? handleSignOut : handleSignIn}
+              disabled={!authReady || isAuthBusy}
+            >
+              {!authReady || isAuthBusy
+                ? 'Please wait…'
+                : authAccount ? 'Sign out' : 'Sign in'}
+            </button>
+          </div>
+        )}
         <details className="settings">
           <summary>Settings</summary>
           <div className="settings-panel">
@@ -184,21 +299,12 @@ function App() {
               Interaction history endpoint
               <input value={historyUrl} onChange={(event) => setHistoryUrl(event.target.value)} />
             </label>
-            <label>
-              History access token
-              <input
-                type="password"
-                autoComplete="off"
-                value={historyToken}
-                onChange={(event) => setHistoryToken(event.target.value)}
-                placeholder="Optional bearer token"
-              />
-            </label>
           </div>
         </details>
       </header>
 
       <main className="main-panel">
+        {authError && page !== 'interactions' && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
           <section className="page-content">
             <div className="page-heading">
@@ -262,31 +368,86 @@ function App() {
         )}
 
         {page === 'interactions' && (
-          <section className="page-content">
-            <div className="page-heading page-heading--row">
+          <section className="page-content interaction-page">
+            <div className="page-heading page-heading--row interaction-heading">
               <div>
-                <p className="eyebrow">Agent interactions</p>
-                <h1>Interaction history</h1>
-                <p>Review requests and results saved by the Persistence API.</p>
+                <p className="eyebrow">History</p>
+                <h1>Agent interactions</h1>
+                <p>Browse requests and results recorded by your hosted agents.</p>
               </div>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => loadInteractions()}
-                disabled={isHistoryLoading}
+                disabled={isHistoryLoading || !authAccount}
               >
                 {isHistoryLoading ? 'Loading…' : 'Refresh'}
               </button>
             </div>
 
             {historyError && <p className="error-message" role="alert">{historyError}</p>}
-            {interactions.length === 0 && !isHistoryLoading ? (
+            {authError && <p className="error-message" role="alert">{authError}</p>}
+            {!isEntraConfigured && (
+              <div className="auth-notice">
+                <h2>Microsoft sign-in needs configuration</h2>
+                <p>
+                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
+                </p>
+              </div>
+            )}
+            {isEntraConfigured && !authAccount && (
+              <div className="auth-notice">
+                <h2>Sign in to view agent interactions</h2>
+                <p>Use your work account to securely access the Persistence API.</p>
+                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
+                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
+                </button>
+              </div>
+            )}
+            <div className="interaction-tools" role="search">
+              <label className="interaction-search">
+                <span>Search interactions</span>
+                <input
+                  type="search"
+                  value={interactionSearch}
+                  onChange={(event) => setInteractionSearch(event.target.value)}
+                  placeholder="Search request, agent, or result"
+                  disabled={!authAccount}
+                />
+              </label>
+              <label>
+                Filter by agent
+                <select value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)} disabled={!authAccount}>
+                  <option value="">All agents</option>
+                  {agentNames.map((agentName) => (
+                    <option key={agentName} value={agentName}>{agentName}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Sort by
+                <select value={interactionSort} onChange={(event) => setInteractionSort(event.target.value)} disabled={!authAccount}>
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="agent-asc">Agent name (A–Z)</option>
+                  <option value="agent-desc">Agent name (Z–A)</option>
+                </select>
+              </label>
+              <p className="interaction-count" aria-live="polite">
+                Showing {visibleInteractions.length} of {interactions.length} loaded
+              </p>
+            </div>
+            {authAccount && isHistoryLoading && interactions.length === 0 ? (
+              <p className="empty-state">Loading interactions…</p>
+            ) : authAccount && interactions.length === 0 ? (
               <p className="empty-state">
                 {historyError ? 'Interaction history could not be loaded.' : 'No interactions found yet.'}
               </p>
-            ) : (
+            ) : authAccount && visibleInteractions.length === 0 ? (
+              <p className="empty-state">No interactions match these search and filter settings.</p>
+            ) : authAccount ? (
               <div className="interaction-list">
-                {interactions.map((interaction) => (
+                {visibleInteractions.map((interaction) => (
                   <article className="interaction-card" key={interaction.request_id}>
                     <div className="interaction-card__heading">
                       <div>
@@ -302,13 +463,15 @@ function App() {
                       </div>
                       <div>
                         <h2>Result</h2>
-                        <pre>{JSON.stringify(interaction.result_json, null, 2) || 'No result recorded.'}</pre>
+                        {interaction.result_json
+                          ? <InteractionResult value={interaction.result_json} />
+                          : <p className="result-empty">No result recorded.</p>}
                       </div>
                     </div>
                   </article>
                 ))}
               </div>
-            )}
+            ) : null}
             {hasMoreInteractions && (
               <button
                 type="button"
@@ -355,6 +518,36 @@ function ResponsePanel({ status, message, error, result }) {
         </div>
       )}
     </section>
+  );
+}
+
+function InteractionResult({ value }) {
+  const classification = value?.result_json || value?.result || value;
+  const evidence = Array.isArray(classification?.evidence)
+    ? classification.evidence
+    : classification?.evidence
+      ? [classification.evidence]
+      : [];
+
+  return (
+    <dl className="classification-result">
+      <div>
+        <dt>Primary Contact Reason</dt>
+        <dd>{classification?.primary_contact_reason ?? 'Not provided'}</dd>
+      </div>
+      <div>
+        <dt>Confidence</dt>
+        <dd>{classification?.confidence ?? 'Not provided'}</dd>
+      </div>
+      <div>
+        <dt>Evidence</dt>
+        <dd>
+          {evidence.length > 0
+            ? <ul>{evidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+            : 'No evidence provided'}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
