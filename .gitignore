@@ -20,3 +20,4 @@ ui/npm-debug.log*
 
 .python_packages
 .venv-py312
+.azurite/__azurite_db_blob__.json
