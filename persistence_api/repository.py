@@ -130,6 +130,37 @@ class InteractionRepository:
             rows = connection.execute(statement).mappings().all()
         return [dict(row) for row in rows]
 
+    def demand_driver_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        contact_reasons: list[str],
+    ) -> list[dict[str, Any]]:
+        pcr_reason = AgentInteraction.result_json["result"]["primary_contact_reason"].astext
+        demand_driver = AgentInteraction.result_json["result"]["demand_driver"].astext
+        statement = (
+            select(demand_driver.label("reason"), func.count(AgentInteraction.id).label("count"))
+            .where(AgentInteraction.status == "completed", demand_driver.is_not(None))
+            .group_by(demand_driver)
+            .order_by(func.count(AgentInteraction.id).desc(), demand_driver.asc())
+        )
+        if start_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at >= datetime.combine(start_date, time.min, tzinfo=UTC)
+            )
+        if end_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at
+                < datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=UTC)
+            )
+        if contact_reasons:
+            statement = statement.where(pcr_reason.in_(contact_reasons))
+
+        with self._engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
+
 
 def render_human_readable(request: PersistenceRequest) -> str:
     if request.result_json.get("summary"):

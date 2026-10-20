@@ -5,10 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from hosted_agent.schemas import AgentResult, ContactReason
+from hosted_agent.schemas import AgentResult, ContactReason, DemandDriver
 from shared.canonical import sha256_json
 
 PcrReason = ContactReason | Literal["Not identified"]
+DemandDriverReason = DemandDriver
 
 
 class PersistenceRequest(BaseModel):
@@ -94,6 +95,18 @@ class PcrAnalyticsItem(BaseModel):
 
 class PcrAnalyticsResponse(BaseModel):
     items: list[PcrAnalyticsItem]
+    available_reasons: list[PcrReason]
+    total_count: int = Field(ge=0)
+
+
+class DemandDriverAnalyticsItem(BaseModel):
+    reason: str
+    count: int = Field(ge=0)
+    percentage: float = Field(ge=0, le=100)
+
+
+class DemandDriverAnalyticsResponse(BaseModel):
+    items: list[DemandDriverAnalyticsItem]
     available_reasons: list[PcrReason]
     total_count: int = Field(ge=0)
 

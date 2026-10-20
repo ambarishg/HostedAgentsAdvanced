@@ -11,6 +11,7 @@ import {
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
 const defaultAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_ANALYTICS_URL || '/api/pcr-analytics';
+const defaultDemandDriverAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_DEMAND_DRIVER_ANALYTICS_URL || '/api/demand-driver-analytics';
 
 const createRequestBody = (userInput, requestId, batchMode) => ({
   request_id: requestId,
@@ -49,6 +50,7 @@ function App() {
   const [agentUrl, setAgentUrl] = useState(defaultAgentUrl);
   const [historyUrl, setHistoryUrl] = useState(defaultHistoryUrl);
   const [analyticsUrl, setAnalyticsUrl] = useState(defaultAnalyticsUrl);
+  const [demandDriverAnalyticsUrl, setDemandDriverAnalyticsUrl] = useState(defaultDemandDriverAnalyticsUrl);
   const [page, setPage] = useState('home');
   const [authAccount, setAuthAccount] = useState(null);
   const [authReady, setAuthReady] = useState(!isEntraConfigured);
@@ -70,10 +72,18 @@ function App() {
   const [analyticsEndDate, setAnalyticsEndDate] = useState('');
   const [selectedContactReasons, setSelectedContactReasons] = useState([]);
   const [analytics, setAnalytics] = useState([]);
+  const [demandDriverAnalyticsStartDate, setDemandDriverAnalyticsStartDate] = useState('');
+  const [demandDriverAnalyticsEndDate, setDemandDriverAnalyticsEndDate] = useState('');
+  const [selectedDemandDriverContactReasons, setSelectedDemandDriverContactReasons] = useState([]);
   const [analyticsTotal, setAnalyticsTotal] = useState(0);
   const [availableContactReasons, setAvailableContactReasons] = useState([]);
   const [analyticsError, setAnalyticsError] = useState('');
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
+  const [demandDriverAnalytics, setDemandDriverAnalytics] = useState([]);
+  const [demandDriverAnalyticsTotal, setDemandDriverAnalyticsTotal] = useState(0);
+  const [availableDemandDriverReasons, setAvailableDemandDriverReasons] = useState([]);
+  const [demandDriverAnalyticsError, setDemandDriverAnalyticsError] = useState('');
+  const [isDemandDriverAnalyticsLoading, setIsDemandDriverAnalyticsLoading] = useState(false);
 
   const agentNames = useMemo(
     () => [...new Set(interactions.map(({ agent_name: agentName }) => agentName).filter(Boolean))]
@@ -219,6 +229,57 @@ function App() {
     if (authAccount) loadPcrAnalytics();
   };
 
+  const loadDemandDriverAnalytics = async (isAuthenticated = Boolean(authAccount)) => {
+    if (!isAuthenticated) {
+      setDemandDriverAnalyticsError(
+        isEntraConfigured
+          ? 'Sign in with your work account to view demand driver analytics.'
+          : `Configure ${entraConfigurationKeys.join(', ')} to enable Microsoft sign-in.`,
+      );
+      return;
+    }
+
+    setIsDemandDriverAnalyticsLoading(true);
+    setDemandDriverAnalyticsError('');
+    setDemandDriverAnalytics([]);
+    setDemandDriverAnalyticsTotal(0);
+    try {
+      const query = new URLSearchParams();
+      if (demandDriverAnalyticsStartDate) query.set('start_date', demandDriverAnalyticsStartDate);
+      if (demandDriverAnalyticsEndDate) query.set('end_date', demandDriverAnalyticsEndDate);
+      if (selectedDemandDriverContactReasons.length) {
+        query.set('contact_reasons', selectedDemandDriverContactReasons.join(','));
+      }
+      const separator = demandDriverAnalyticsUrl.includes('?') ? '&' : '?';
+      const token = await acquirePersistenceToken();
+      const response = await fetch(`${demandDriverAnalyticsUrl}${separator}${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error(rawText || `Demand driver analytics request failed with status ${response.status}.`);
+      }
+
+      const payload = JSON.parse(rawText);
+      if (!Array.isArray(payload.items) || !Array.isArray(payload.available_reasons)
+        || !Number.isInteger(payload.total_count)) {
+        throw new Error('The persistence API returned an invalid demand driver analytics response.');
+      }
+      setDemandDriverAnalytics(payload.items);
+      setDemandDriverAnalyticsTotal(payload.total_count);
+      setAvailableDemandDriverReasons(payload.available_reasons);
+    } catch (fetchError) {
+      setDemandDriverAnalyticsError(fetchError.message || 'Unable to retrieve demand driver analytics.');
+    } finally {
+      setIsDemandDriverAnalyticsLoading(false);
+    }
+  };
+
+  const openDemandDriverAnalytics = () => {
+    setPage('demand-driver-analytics');
+    if (authAccount) loadDemandDriverAnalytics();
+  };
+
   const handleSignIn = async () => {
     setIsAuthBusy(true);
     setAuthError('');
@@ -227,6 +288,7 @@ function App() {
       setAuthAccount(account);
       if (page === 'interactions') await loadInteractions(0, false, true);
       if (page === 'pcr-analytics') await loadPcrAnalytics(true);
+      if (page === 'demand-driver-analytics') await loadDemandDriverAnalytics(true);
     } catch (signInError) {
       setAuthError(signInError.message || 'Unable to sign in with Microsoft.');
     } finally {
@@ -244,6 +306,9 @@ function App() {
       setHasMoreInteractions(false);
       setAnalytics([]);
       setAnalyticsTotal(0);
+      setDemandDriverAnalytics([]);
+      setDemandDriverAnalyticsTotal(0);
+      setAvailableDemandDriverReasons([]);
     } catch (signOutError) {
       setAuthError(signOutError.message || 'Unable to sign out.');
     } finally {
@@ -330,8 +395,8 @@ function App() {
           </button>
           <button
             type="button"
-            className={page === 'interactions' || page === 'pcr-analytics' ? 'page-navigation__active' : ''}
-            aria-current={page === 'interactions' || page === 'pcr-analytics' ? 'page' : undefined}
+            className={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' ? 'page-navigation__active' : ''}
+            aria-current={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' ? 'page' : undefined}
             onClick={openInteractions}
           >
           Agent Interaction
@@ -367,12 +432,16 @@ function App() {
               PCR analytics endpoint
               <input value={analyticsUrl} onChange={(event) => setAnalyticsUrl(event.target.value)} />
             </label>
+            <label>
+              Demand driver analytics endpoint
+              <input value={demandDriverAnalyticsUrl} onChange={(event) => setDemandDriverAnalyticsUrl(event.target.value)} />
+            </label>
           </div>
         </details>
       </header>
 
       <main className="main-panel">
-        {authError && page !== 'interactions' && <p className="error-message" role="alert">{authError}</p>}
+        {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
           <section className="page-content">
             <div className="page-heading">
@@ -437,7 +506,12 @@ function App() {
 
         {page === 'interactions' && (
           <section className="page-content interaction-page">
-            <AgentInteractionNavigation page={page} onInteractions={openInteractions} onAnalytics={openPcrAnalytics} />
+            <AgentInteractionNavigation
+              page={page}
+              onInteractions={openInteractions}
+              onAnalytics={openPcrAnalytics}
+              onDemandDriverAnalytics={openDemandDriverAnalytics}
+            />
             <div className="page-heading page-heading--row interaction-heading">
               <div>
                 <p className="eyebrow">History</p>
@@ -555,7 +629,12 @@ function App() {
         )}
         {page === 'pcr-analytics' && (
           <section className="page-content interaction-page">
-            <AgentInteractionNavigation page={page} onInteractions={openInteractions} onAnalytics={openPcrAnalytics} />
+            <AgentInteractionNavigation
+              page={page}
+              onInteractions={openInteractions}
+              onAnalytics={openPcrAnalytics}
+              onDemandDriverAnalytics={openDemandDriverAnalytics}
+            />
             <div className="page-heading page-heading--row interaction-heading">
               <div>
                 <p className="eyebrow">Agent Interaction</p>
@@ -674,12 +753,141 @@ function App() {
             )}
           </section>
         )}
+
+        {page === 'demand-driver-analytics' && (
+          <section className="page-content interaction-page">
+            <AgentInteractionNavigation
+              page={page}
+              onInteractions={openInteractions}
+              onAnalytics={openPcrAnalytics}
+              onDemandDriverAnalytics={openDemandDriverAnalytics}
+            />
+            <div className="page-heading page-heading--row interaction-heading">
+              <div>
+                <p className="eyebrow">Agent Interaction</p>
+                <h1>Demand Driver Analytics</h1>
+                <p>Explore completed interaction counts by demand driver.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => loadDemandDriverAnalytics()}
+                disabled={isDemandDriverAnalyticsLoading || !authAccount}
+              >
+                {isDemandDriverAnalyticsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+            {demandDriverAnalyticsError && <p className="error-message" role="alert">{demandDriverAnalyticsError}</p>}
+            {authError && <p className="error-message" role="alert">{authError}</p>}
+            {!isEntraConfigured && (
+              <div className="auth-notice">
+                <h2>Microsoft sign-in needs configuration</h2>
+                <p>
+                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
+                </p>
+              </div>
+            )}
+            {isEntraConfigured && !authAccount && (
+              <div className="auth-notice">
+                <h2>Sign in to view demand driver analytics</h2>
+                <p>Use your work account to securely access the Persistence API.</p>
+                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
+                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
+                </button>
+              </div>
+            )}
+            <form
+              className="analytics-filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                loadDemandDriverAnalytics();
+              }}
+            >
+              <label>
+                Start date
+                <input
+                  type="date"
+                  value={demandDriverAnalyticsStartDate}
+                  max={demandDriverAnalyticsEndDate || undefined}
+                  onChange={(event) => setDemandDriverAnalyticsStartDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  type="date"
+                  value={demandDriverAnalyticsEndDate}
+                  min={demandDriverAnalyticsStartDate || undefined}
+                  onChange={(event) => setDemandDriverAnalyticsEndDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label className="analytics-reasons">
+                Contact reasons
+                <select
+                  multiple
+                  size={5}
+                  value={selectedDemandDriverContactReasons}
+                  onChange={(event) => setSelectedDemandDriverContactReasons(
+                    [...event.target.selectedOptions].map((option) => option.value),
+                  )}
+                  disabled={!authAccount}
+                >
+                  {availableDemandDriverReasons.map((reason) => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
+                </select>
+                <span className="filter-hint">Use Ctrl or Command to select multiple reasons.</span>
+              </label>
+              <button type="submit" disabled={!authAccount || isDemandDriverAnalyticsLoading}>
+                {isDemandDriverAnalyticsLoading ? 'Applying…' : 'Apply filters'}
+              </button>
+            </form>
+            {!authAccount ? null : isDemandDriverAnalyticsLoading && demandDriverAnalytics.length === 0 ? (
+              <p className="empty-state">Loading demand driver analytics…</p>
+            ) : demandDriverAnalytics.length === 0 ? (
+              <p className="empty-state">
+                {demandDriverAnalyticsError
+                  ? 'Demand driver analytics could not be loaded.'
+                  : 'No demand driver results found for these filters.'}
+              </p>
+            ) : (
+              <section className="analytics-chart" aria-label="Demand driver counts">
+                <div className="analytics-chart__heading">
+                  <h2>Interactions by demand driver</h2>
+                  <span>{demandDriverAnalyticsTotal} interactions</span>
+                </div>
+                <div className="analytics-bars">
+                  {demandDriverAnalytics.map((item) => (
+                    <div className="analytics-bar" key={item.reason}>
+                      <div className="analytics-bar__label">
+                        <span>{item.reason}</span>
+                        <strong>{item.count}</strong>
+                      </div>
+                      <div
+                        className="analytics-bar__track"
+                        role="progressbar"
+                        aria-label={`${item.reason}: ${item.count} interactions`}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={item.percentage}
+                      >
+                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );
 }
 
-function AgentInteractionNavigation({ page, onInteractions, onAnalytics }) {
+function AgentInteractionNavigation({ page, onInteractions, onAnalytics, onDemandDriverAnalytics }) {
   return (
     <nav className="interaction-section-navigation" aria-label="Agent Interaction">
       <button
@@ -697,6 +905,14 @@ function AgentInteractionNavigation({ page, onInteractions, onAnalytics }) {
         onClick={onAnalytics}
       >
         Primary Contact Reason Analytics
+      </button>
+      <button
+        type="button"
+        className={page === 'demand-driver-analytics' ? 'interaction-section-navigation__active' : ''}
+        aria-current={page === 'demand-driver-analytics' ? 'page' : undefined}
+        onClick={onDemandDriverAnalytics}
+      >
+        Demand Driver Analytics
       </button>
     </nav>
   );
