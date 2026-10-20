@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -84,3 +85,32 @@ def test_service_maps_database_connection_failure_safely(api_settings, monkeypat
 
     with pytest.raises(DatabaseUnavailable, match="temporarily unavailable"):
         service.save(make_request())
+
+
+def test_service_returns_backend_aggregates_and_percentages(api_settings, monkeypatch) -> None:
+    def pcr_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        contact_reasons: list[str],
+    ) -> list[dict[str, int | str]]:
+        assert start_date == date(2025, 1, 1)
+        assert end_date == date(2025, 1, 31)
+        assert contact_reasons == []
+        return [{"reason": "Policy status", "count": 3}, {"reason": "Complaint", "count": 1}]
+
+    monkeypatch.setattr(InteractionRepository, "pcr_analytics", pcr_analytics)
+    service = PersistenceService(api_settings, engine=None)
+
+    response = service.pcr_analytics(
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        contact_reasons=[],
+    )
+
+    assert response.total_count == 4
+    assert [(item.reason, item.count, item.percentage) for item in response.items] == [
+        ("Policy status", 3, 75),
+        ("Complaint", 1, 25),
+    ]

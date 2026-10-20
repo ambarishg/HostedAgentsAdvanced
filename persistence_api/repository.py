@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from persistence_api.models import AgentInteraction
@@ -99,6 +99,36 @@ class InteractionRepository:
             rows = connection.execute(statement).mappings().all()
         has_more = len(rows) > limit
         return [dict(row) for row in rows[:limit]], has_more
+
+    def pcr_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        contact_reasons: list[str],
+    ) -> list[dict[str, Any]]:
+        reason = AgentInteraction.result_json["result"]["primary_contact_reason"].astext
+        statement = (
+            select(reason.label("reason"), func.count(AgentInteraction.id).label("count"))
+            .where(AgentInteraction.status == "completed", reason.is_not(None))
+            .group_by(reason)
+            .order_by(func.count(AgentInteraction.id).desc(), reason.asc())
+        )
+        if start_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at >= datetime.combine(start_date, time.min, tzinfo=UTC)
+            )
+        if end_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at
+                < datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=UTC)
+            )
+        if contact_reasons:
+            statement = statement.where(reason.in_(contact_reasons))
+
+        with self._engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
 
 
 def render_human_readable(request: PersistenceRequest) -> str:

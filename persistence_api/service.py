@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC
+from datetime import UTC, date
+from typing import get_args
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
+from hosted_agent.schemas import ContactReason
 from persistence_api.config import ApiSettings
 from persistence_api.repository import (
     IdempotencyConflict,
@@ -16,6 +18,8 @@ from persistence_api.repository import (
 from persistence_api.schemas import (
     InteractionHistoryItem,
     InteractionHistoryResponse,
+    PcrAnalyticsItem,
+    PcrAnalyticsResponse,
     PersistenceRequest,
     PersistenceResponse,
     calculate_payload_hash,
@@ -136,6 +140,40 @@ class PersistenceService:
             limit=limit,
             offset=offset,
             has_more=has_more,
+        )
+
+    def pcr_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        contact_reasons: list[str],
+    ) -> PcrAnalyticsResponse:
+        try:
+            rows = self._repository.pcr_analytics(
+                start_date=start_date,
+                end_date=end_date,
+                contact_reasons=contact_reasons,
+            )
+        except OperationalError as exc:
+            logger.error("Database connection failed", extra={"error_code": "database_unavailable"})
+            raise DatabaseUnavailable("Database is temporarily unavailable.") from exc
+        except SQLAlchemyError as exc:
+            logger.error("Database query failed", extra={"error_code": "database_error"})
+            raise PersistenceFailure("Database query failed.") from exc
+
+        total = sum(int(row["count"]) for row in rows)
+        return PcrAnalyticsResponse(
+            items=[
+                PcrAnalyticsItem(
+                    reason=str(row["reason"]),
+                    count=int(row["count"]),
+                    percentage=(int(row["count"]) / total * 100) if total else 0,
+                )
+                for row in rows
+            ],
+            available_reasons=[*get_args(ContactReason), "Not identified"],
+            total_count=total,
         )
 
     def delete_expired(self) -> int:

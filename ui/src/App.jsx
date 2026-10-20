@@ -10,6 +10,7 @@ import {
 
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
+const defaultAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_ANALYTICS_URL || '/api/pcr-analytics';
 
 const createRequestBody = (userInput, requestId, batchMode) => ({
   request_id: requestId,
@@ -47,6 +48,7 @@ function App() {
   const [userInput, setUserInput] = useState('');
   const [agentUrl, setAgentUrl] = useState(defaultAgentUrl);
   const [historyUrl, setHistoryUrl] = useState(defaultHistoryUrl);
+  const [analyticsUrl, setAnalyticsUrl] = useState(defaultAnalyticsUrl);
   const [page, setPage] = useState('home');
   const [authAccount, setAuthAccount] = useState(null);
   const [authReady, setAuthReady] = useState(!isEntraConfigured);
@@ -64,6 +66,14 @@ function App() {
   const [interactionSearch, setInteractionSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState('');
   const [interactionSort, setInteractionSort] = useState('newest');
+  const [analyticsStartDate, setAnalyticsStartDate] = useState('');
+  const [analyticsEndDate, setAnalyticsEndDate] = useState('');
+  const [selectedContactReasons, setSelectedContactReasons] = useState([]);
+  const [analytics, setAnalytics] = useState([]);
+  const [analyticsTotal, setAnalyticsTotal] = useState(0);
+  const [availableContactReasons, setAvailableContactReasons] = useState([]);
+  const [analyticsError, setAnalyticsError] = useState('');
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
 
   const agentNames = useMemo(
     () => [...new Set(interactions.map(({ agent_name: agentName }) => agentName).filter(Boolean))]
@@ -158,6 +168,57 @@ function App() {
     if (authAccount) loadInteractions();
   };
 
+  const loadPcrAnalytics = async (isAuthenticated = Boolean(authAccount)) => {
+    if (!isAuthenticated) {
+      setAnalyticsError(
+        isEntraConfigured
+          ? 'Sign in with your work account to view PCR analytics.'
+          : `Configure ${entraConfigurationKeys.join(', ')} to enable Microsoft sign-in.`,
+      );
+      return;
+    }
+
+    setIsAnalyticsLoading(true);
+    setAnalyticsError('');
+    setAnalytics([]);
+    setAnalyticsTotal(0);
+    try {
+      const query = new URLSearchParams();
+      if (analyticsStartDate) query.set('start_date', analyticsStartDate);
+      if (analyticsEndDate) query.set('end_date', analyticsEndDate);
+      if (selectedContactReasons.length) {
+        query.set('contact_reasons', selectedContactReasons.join(','));
+      }
+      const separator = analyticsUrl.includes('?') ? '&' : '?';
+      const token = await acquirePersistenceToken();
+      const response = await fetch(`${analyticsUrl}${separator}${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error(rawText || `PCR analytics request failed with status ${response.status}.`);
+      }
+
+      const payload = JSON.parse(rawText);
+      if (!Array.isArray(payload.items) || !Array.isArray(payload.available_reasons)
+        || !Number.isInteger(payload.total_count)) {
+        throw new Error('The persistence API returned an invalid PCR analytics response.');
+      }
+      setAnalytics(payload.items);
+      setAnalyticsTotal(payload.total_count);
+      setAvailableContactReasons(payload.available_reasons);
+    } catch (fetchError) {
+      setAnalyticsError(fetchError.message || 'Unable to retrieve PCR analytics.');
+    } finally {
+      setIsAnalyticsLoading(false);
+    }
+  };
+
+  const openPcrAnalytics = () => {
+    setPage('pcr-analytics');
+    if (authAccount) loadPcrAnalytics();
+  };
+
   const handleSignIn = async () => {
     setIsAuthBusy(true);
     setAuthError('');
@@ -165,6 +226,7 @@ function App() {
       const account = await signInToEntra();
       setAuthAccount(account);
       if (page === 'interactions') await loadInteractions(0, false, true);
+      if (page === 'pcr-analytics') await loadPcrAnalytics(true);
     } catch (signInError) {
       setAuthError(signInError.message || 'Unable to sign in with Microsoft.');
     } finally {
@@ -180,6 +242,8 @@ function App() {
       setAuthAccount(null);
       setInteractions([]);
       setHasMoreInteractions(false);
+      setAnalytics([]);
+      setAnalyticsTotal(0);
     } catch (signOutError) {
       setAuthError(signOutError.message || 'Unable to sign out.');
     } finally {
@@ -266,11 +330,11 @@ function App() {
           </button>
           <button
             type="button"
-            className={page === 'interactions' ? 'page-navigation__active' : ''}
-            aria-current={page === 'interactions' ? 'page' : undefined}
+            className={page === 'interactions' || page === 'pcr-analytics' ? 'page-navigation__active' : ''}
+            aria-current={page === 'interactions' || page === 'pcr-analytics' ? 'page' : undefined}
             onClick={openInteractions}
           >
-            Agent interactions
+          Agent Interaction
           </button>
         </nav>
         {isEntraConfigured && (
@@ -298,6 +362,10 @@ function App() {
             <label>
               Interaction history endpoint
               <input value={historyUrl} onChange={(event) => setHistoryUrl(event.target.value)} />
+            </label>
+            <label>
+              PCR analytics endpoint
+              <input value={analyticsUrl} onChange={(event) => setAnalyticsUrl(event.target.value)} />
             </label>
           </div>
         </details>
@@ -369,6 +437,7 @@ function App() {
 
         {page === 'interactions' && (
           <section className="page-content interaction-page">
+            <AgentInteractionNavigation page={page} onInteractions={openInteractions} onAnalytics={openPcrAnalytics} />
             <div className="page-heading page-heading--row interaction-heading">
               <div>
                 <p className="eyebrow">History</p>
@@ -484,8 +553,152 @@ function App() {
             )}
           </section>
         )}
+        {page === 'pcr-analytics' && (
+          <section className="page-content interaction-page">
+            <AgentInteractionNavigation page={page} onInteractions={openInteractions} onAnalytics={openPcrAnalytics} />
+            <div className="page-heading page-heading--row interaction-heading">
+              <div>
+                <p className="eyebrow">Agent Interaction</p>
+                <h1>Primary Contact Reason Analytics</h1>
+                <p>Explore completed interaction counts by primary contact reason.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => loadPcrAnalytics()}
+                disabled={isAnalyticsLoading || !authAccount}
+              >
+                {isAnalyticsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+            {analyticsError && <p className="error-message" role="alert">{analyticsError}</p>}
+            {authError && <p className="error-message" role="alert">{authError}</p>}
+            {!isEntraConfigured && (
+              <div className="auth-notice">
+                <h2>Microsoft sign-in needs configuration</h2>
+                <p>
+                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
+                </p>
+              </div>
+            )}
+            {isEntraConfigured && !authAccount && (
+              <div className="auth-notice">
+                <h2>Sign in to view PCR analytics</h2>
+                <p>Use your work account to securely access the Persistence API.</p>
+                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
+                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
+                </button>
+              </div>
+            )}
+            <form
+              className="analytics-filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                loadPcrAnalytics();
+              }}
+            >
+              <label>
+                Start date
+                <input
+                  type="date"
+                  value={analyticsStartDate}
+                  max={analyticsEndDate || undefined}
+                  onChange={(event) => setAnalyticsStartDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  type="date"
+                  value={analyticsEndDate}
+                  min={analyticsStartDate || undefined}
+                  onChange={(event) => setAnalyticsEndDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label className="analytics-reasons">
+                Contact reasons
+                <select
+                  multiple
+                  size={5}
+                  value={selectedContactReasons}
+                  onChange={(event) => setSelectedContactReasons(
+                    [...event.target.selectedOptions].map((option) => option.value),
+                  )}
+                  disabled={!authAccount}
+                >
+                  {availableContactReasons.map((reason) => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
+                </select>
+                <span className="filter-hint">Use Ctrl or Command to select multiple reasons.</span>
+              </label>
+              <button type="submit" disabled={!authAccount || isAnalyticsLoading}>
+                {isAnalyticsLoading ? 'Applying…' : 'Apply filters'}
+              </button>
+            </form>
+            {!authAccount ? null : isAnalyticsLoading && analytics.length === 0 ? (
+              <p className="empty-state">Loading PCR analytics…</p>
+            ) : analytics.length === 0 ? (
+              <p className="empty-state">
+                {analyticsError ? 'PCR analytics could not be loaded.' : 'No PCR results found for these filters.'}
+              </p>
+            ) : (
+              <section className="analytics-chart" aria-label="Primary Contact Reason counts">
+                <div className="analytics-chart__heading">
+                  <h2>Interactions by primary contact reason</h2>
+                  <span>{analyticsTotal} interactions</span>
+                </div>
+                <div className="analytics-bars">
+                  {analytics.map((item) => (
+                    <div className="analytics-bar" key={item.reason}>
+                      <div className="analytics-bar__label">
+                        <span>{item.reason}</span>
+                        <strong>{item.count}</strong>
+                      </div>
+                      <div
+                        className="analytics-bar__track"
+                        role="progressbar"
+                        aria-label={`${item.reason}: ${item.count} interactions`}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={item.percentage}
+                      >
+                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </section>
+        )}
       </main>
     </div>
+  );
+}
+
+function AgentInteractionNavigation({ page, onInteractions, onAnalytics }) {
+  return (
+    <nav className="interaction-section-navigation" aria-label="Agent Interaction">
+      <button
+        type="button"
+        className={page === 'interactions' ? 'interaction-section-navigation__active' : ''}
+        aria-current={page === 'interactions' ? 'page' : undefined}
+        onClick={onInteractions}
+      >
+        Interactions
+      </button>
+      <button
+        type="button"
+        className={page === 'pcr-analytics' ? 'interaction-section-navigation__active' : ''}
+        aria-current={page === 'pcr-analytics' ? 'page' : undefined}
+        onClick={onAnalytics}
+      >
+        Primary Contact Reason Analytics
+      </button>
+    </nav>
   );
 }
 

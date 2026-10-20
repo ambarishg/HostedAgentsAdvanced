@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from hosted_agent.schemas import AgentResult
+from hosted_agent.schemas import AgentResult, ContactReason
 from shared.canonical import sha256_json
+
+PcrReason = ContactReason | Literal["Not identified"]
 
 
 class PersistenceRequest(BaseModel):
@@ -53,6 +55,18 @@ class InteractionHistoryResponse(BaseModel):
     limit: int
     offset: int
     has_more: bool
+
+
+class PcrAnalyticsItem(BaseModel):
+    reason: str
+    count: int = Field(ge=0)
+    percentage: float = Field(ge=0, le=100)
+
+
+class PcrAnalyticsResponse(BaseModel):
+    items: list[PcrAnalyticsItem]
+    available_reasons: list[PcrReason]
+    total_count: int = Field(ge=0)
 
 
 class ErrorResponse(BaseModel):

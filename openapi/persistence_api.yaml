@@ -127,6 +127,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /pcr-analytics:
+    get:
+      operationId: get_pcr_analytics
+      summary: Get aggregated primary contact reason analytics
+      description: Returns server-aggregated counts for completed interactions. Date boundaries are inclusive and interpreted as UTC dates.
+      security:
+        - entraBearer: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Include interactions created on or after this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          description: Include interactions created on or before this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: contact_reasons
+          in: query
+          required: false
+          description: Comma-separated list of contact reasons to include.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregated counts and the available contact reason filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PcrAnalytics"
+        "400":
+          description: Invalid date range or contact reason filter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Entra access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Required caller permission is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Persistence query failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: PostgreSQL is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     entraBearer:
@@ -250,6 +315,32 @@ components:
           type: integer
         has_more:
           type: boolean
+    PcrAnalytics:
+      type: object
+      required: [items, available_reasons, total_count]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [reason, count, percentage]
+            properties:
+              reason:
+                type: string
+              count:
+                type: integer
+                minimum: 0
+              percentage:
+                type: number
+                minimum: 0
+                maximum: 100
+        available_reasons:
+          type: array
+          items:
+            type: string
+        total_count:
+          type: integer
+          minimum: 0
     Error:
       type: object
       required: [success, error]

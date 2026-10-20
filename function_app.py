@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from functools import lru_cache
-from typing import Any
+from typing import Any, get_args
 
 import azure.functions as func
 from pydantic import ValidationError
 
+from hosted_agent.schemas import ContactReason
 from persistence_api.auth import AuthenticationError, EntraTokenValidator
 from persistence_api.config import ApiSettings, get_settings
 from persistence_api.database import get_engine
@@ -137,6 +139,63 @@ def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         result = _persistence_service().list_interactions(limit=limit, offset=offset)
+    except DatabaseUnavailable:
+        return _error(
+            "database_unavailable", "Persistence service is temporarily unavailable.", 503
+        )
+    except PersistenceFailure:
+        return _error("persistence_failed", "The database query did not complete.", 500)
+
+    return _json_response(result.model_dump(mode="json"), 200)
+
+
+@app.route(route="pcr-analytics", methods=["GET"])
+def get_pcr_analytics(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        get_settings()
+    except (ValueError, OSError):
+        logger.exception(
+            "Persistence API configuration failed", extra={"error_code": "config_error"}
+        )
+        return _error("configuration_error", "Persistence API is not configured.", 500)
+
+    try:
+        _token_validator().validate(req.headers.get("Authorization"))
+    except AuthenticationError as exc:
+        logger.warning(
+            "Persistence API rejected caller",
+            extra={"error_code": exc.code, "status_code": exc.status_code},
+        )
+        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+
+    try:
+        start_date = (
+            date.fromisoformat(req.params["start_date"]) if req.params.get("start_date") else None
+        )
+        end_date = (
+            date.fromisoformat(req.params["end_date"]) if req.params.get("end_date") else None
+        )
+    except ValueError:
+        return _error("invalid_date_range", "Dates must use the YYYY-MM-DD format.", 400)
+    if start_date is not None and end_date is not None and start_date > end_date:
+        return _error("invalid_date_range", "start_date must not be after end_date.", 400)
+
+    contact_reasons = [
+        reason.strip()
+        for reason in req.params.get("contact_reasons", "").split(",")
+        if reason.strip()
+    ]
+    valid_reasons = {*get_args(ContactReason), "Not identified"}
+    if any(reason not in valid_reasons for reason in contact_reasons):
+        return _error("invalid_contact_reason", "One or more contact reasons are invalid.", 400)
+    contact_reasons = list(dict.fromkeys(contact_reasons))
+
+    try:
+        result = _persistence_service().pcr_analytics(
+            start_date=start_date,
+            end_date=end_date,
+            contact_reasons=contact_reasons,
+        )
     except DatabaseUnavailable:
         return _error(
             "database_unavailable", "Persistence service is temporarily unavailable.", 503
