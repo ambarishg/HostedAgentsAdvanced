@@ -736,10 +736,15 @@ function ResponsePanel({ status, message, error, result }) {
 
 function InteractionResult({ value }) {
   const classification = value?.result_json || value?.result || value;
-  const evidence = Array.isArray(classification?.evidence)
+  const primaryEvidence = Array.isArray(classification?.evidence)
     ? classification.evidence
     : classification?.evidence
       ? [classification.evidence]
+      : [];
+  const demandEvidence = Array.isArray(classification?.demand_driver_evidence)
+    ? classification.demand_driver_evidence
+    : classification?.demand_driver_evidence
+      ? [classification.demand_driver_evidence]
       : [];
 
   return (
@@ -749,15 +754,27 @@ function InteractionResult({ value }) {
         <dd>{classification?.primary_contact_reason ?? 'Not provided'}</dd>
       </div>
       <div>
-        <dt>Confidence</dt>
+        <dt>Demand Driver</dt>
+        <dd>{classification?.demand_driver ?? 'Not provided'}</dd>
+      </div>
+      <div>
+        <dt>Confidence Level</dt>
         <dd>{classification?.confidence ?? 'Not provided'}</dd>
       </div>
       <div>
-        <dt>Evidence</dt>
+        <dt>Primary Contact Reason Evidence</dt>
         <dd>
-          {evidence.length > 0
-            ? <ul>{evidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+          {primaryEvidence.length > 0
+            ? <ul>{primaryEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
             : 'No evidence provided'}
+        </dd>
+      </div>
+      <div>
+        <dt>Demand Driver Evidence</dt>
+        <dd>
+          {demandEvidence.length > 0
+            ? <ul>{demandEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+            : 'No demand driver evidence provided'}
         </dd>
       </div>
     </dl>
