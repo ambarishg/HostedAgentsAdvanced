@@ -14,10 +14,13 @@ from hosted_agent.schemas import ModelAgentOutput, PCRClassification
 
 PCR_RESULT = {
     "primary_contact_reason": "Policy information / clarification",
+    "demand_driver": "Unclear policy information",
     "confidence": "High",
     "evidence": ["The customer asks for clarification about their policy."],
     "rationale": "The customer contacted L&G to understand their policy.",
     "secondary_reasons": [],
+    "demand_driver_evidence": ["The customer says they do not understand how the policy works."],
+    "demand_driver_rationale": "The customer is seeking clarification because the policy terms are unclear.",
 }
 
 
@@ -104,6 +107,7 @@ async def test_empty_transcript_returns_persisted_not_identified_result(request_
 
     assert response.result == {
         "primary_contact_reason": "Not identified",
+        "demand_driver": "Not identified",
         "confidence": "Low",
         "evidence": [],
         "rationale": (
@@ -111,6 +115,11 @@ async def test_empty_transcript_returns_persisted_not_identified_result(request_
             "primary contact reason."
         ),
         "secondary_reasons": [],
+        "demand_driver_evidence": [],
+        "demand_driver_rationale": (
+            "The transcript does not provide enough information to identify the "
+            "underlying demand driver."
+        ),
     }
     assert persistence.saved["user_input"] == "  "
     assert persistence.saved["result"].result == response.result
@@ -427,6 +436,7 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
     assert received_inputs == ["Process Alice", ""]
     assert responses[1].result == {
         "primary_contact_reason": "Not identified",
+        "demand_driver": "Not identified",
         "confidence": "Low",
         "evidence": [],
         "rationale": (
@@ -434,6 +444,11 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
             "primary contact reason."
         ),
         "secondary_reasons": [],
+        "demand_driver_evidence": [],
+        "demand_driver_rationale": (
+            "The transcript does not provide enough information to identify the "
+            "underlying demand driver."
+        ),
     }
     assert orchestrator.last_errors == []
 

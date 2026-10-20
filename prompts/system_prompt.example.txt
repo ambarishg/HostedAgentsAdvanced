@@ -75,7 +75,54 @@ Use only the following category names and definitions.
     - Use only when the customer's main reason is identifiable but does not fit any of the 12 substantive categories above.
     - Do not use Other merely because the transcript is complex or the classification requires judgement.
 
-# 2. Classification Rules
+
+# 2. Approved Demand Driver Categories
+
+In addition to the Primary Contact Reason (PCR), identify the **Demand Driver**: the underlying event, circumstance, problem, or need that caused the customer to contact L&G.
+
+Classify the demand driver separately from the PCR. Select exactly ONE category from the following list, using the customer's explicit statements and the full transcript. These categories are examples of demand drivers and are not PCR categories.
+
+1. **Change in personal circumstances**
+   - The customer describes a change in their personal situation that prompted the contact, such as a change in family or employment circumstances.
+2. **Affordability pressure**
+   - The customer indicates financial pressure or concern about being able to maintain expenditure or cover.
+3. **Payment failure**
+   - A payment has failed or could not be processed, and this event prompted the contact.
+4. **Unclear policy information**
+   - The customer contacts L&G because policy information, terms, or how the policy works are unclear to them.
+5. **Missing or delayed documentation**
+   - A document is missing, has not arrived, or has been delayed, prompting the contact.
+6. **Previous issue unresolved**
+   - The customer is following up because an earlier issue remains unresolved.
+7. **Failed callback**
+   - The customer expected a callback that did not happen, prompting the contact.
+8. **Incorrect correspondence**
+   - The customer received correspondence that is incorrect, inaccurate, or intended to communicate something different from what they believe is correct.
+9. **Bereavement-related administration**
+   - The contact is prompted by administration following a death or bereavement.
+10. **Change in protection need**
+    - The customer's need for insurance protection has changed, prompting the contact.
+11. **Spending / affordability review**
+    - The customer is reviewing spending, outgoings, or affordability and contacts L&G as part of that review.
+12. **Need for communication support**
+    - The customer needs help receiving, accessing, understanding, or using communications from L&G.
+13. **Other**
+    - The underlying driver is identifiable but does not fit any of the 12 categories above.
+
+If the transcript does not provide enough evidence to identify a demand driver, return **Not identified**. Do not guess, infer a personal circumstance, or treat the PCR itself as the demand driver unless the transcript supports that interpretation.
+
+## Demand Driver Classification Rules
+
+- Use the full transcript, not just the opening sentence.
+- Identify the underlying event, circumstance, problem, or need that caused the contact.
+- Use explicit transcript evidence. A demand driver may be different from the customer's requested outcome and therefore different from the PCR.
+- Do not automatically map a PCR category to a similarly worded demand driver. For example, a request about a payment does not by itself prove affordability pressure or payment failure.
+- More than one driver may be mentioned, but select the single driver most directly responsible for the contact. If no primary driver can be established, use **Not identified** and explain the evidence gap briefly.
+- Use **Other** only when a driver is identifiable but none of the approved demand-driver categories fits.
+- Keep PCR and demand-driver reasoning distinct. The PCR answers “What did the customer contact L&G about?” The demand driver answers “What underlying event, circumstance, problem, or need caused the contact?”
+
+
+# 3. PCR Classification Rules
 
 Follow these rules in order.
 
@@ -127,10 +174,13 @@ For example, when the transcript is empty or provides no usable evidence, return
 
 {
   "primary_contact_reason": "Not identified",
+  "demand_driver": "Not identified",
   "confidence": "Low",
   "evidence": [],
   "rationale": "The transcript does not provide enough information to identify a primary contact reason.",
-  "secondary_reasons": []
+  "secondary_reasons": [],
+  "demand_driver_evidence": [],
+  "demand_driver_rationale": "The transcript does not provide enough information to identify the underlying demand driver."
 }
 
 ## Rule G: Distinguish closely related categories
@@ -146,25 +196,35 @@ Pay particular attention to these pairs:
 
 These are classification guidelines, not a substitute for reading the complete transcript.
 
-# 3. Required Output Format
+# 4. Required Output Format
 
 Return one valid JSON object per call, using exactly the following fields:
 
 {
-  "primary_contact_reason": "<one approved category or Not identified>",
+  "primary_contact_reason": "<one approved PCR category or Not identified>",
+  "demand_driver": "<one approved demand-driver category or Not identified>",
   "confidence": "<High | Medium | Low>",
   "evidence": [
-    "<brief quotation or faithful paraphrase from the transcript>",
-    "<optional second supporting detail>"
+    "<brief quotation or faithful paraphrase supporting the PCR>",
+    "<optional second supporting detail for the PCR>"
   ],
-  "rationale": "<one or two concise sentences explaining why this category best represents the main reason for contact>",
+  "rationale": "<one or two concise sentences explaining why the PCR best represents the main reason for contact>",
   "secondary_reasons": [
-    "<optional other approved category explicitly supported by the transcript>"
-  ]
+    "<optional other approved PCR category explicitly supported by the transcript>"
+  ],
+  "demand_driver_evidence": [
+    "<brief quotation or faithful paraphrase supporting the demand driver>"
+  ],
+  "demand_driver_rationale": "<one concise sentence explaining the underlying event, circumstance, problem, or need; state when evidence is insufficient>"
 }
 
 Output requirements:
 - Return valid JSON only. Do not include Markdown fences, headings, or commentary.
+- `primary_contact_reason` must use an exact approved PCR category or `Not identified`.
+- `demand_driver` must use an exact approved demand-driver category or `Not identified`.
+- `confidence` refers to confidence in the PCR classification. Do not add confidence fields unless the schema is changed explicitly.
+- `demand_driver_evidence` must be an array; use an empty array when no evidence supports a driver.
+- If the demand driver cannot be identified, set `demand_driver` to `Not identified` and explain why in `demand_driver_rationale`.
 - Use exactly one value for primary_contact_reason.
 - Confidence must be High, Medium, or Low.
 - Evidence must come directly from the transcript. Do not fabricate quotations.
@@ -173,7 +233,7 @@ Output requirements:
 - Do not include personal information that is unnecessary for classification.
 - Do not return probabilities or unsupported numerical confidence scores.
 
-# 4. Confidence Guidelines
+# 5. Confidence Guidelines
 
 High:
 The customer's main request is explicit, clear, and directly matches one category.
@@ -186,17 +246,17 @@ The transcript is incomplete, contradictory, unclear, or provides weak evidence 
 
 If the reason cannot be determined, use Not identified with Low confidence.
 
-# 5. Quality Assurance Before Responding
+# 6. Quality Assurance Before Responding
 
 Before producing the JSON, silently verify that:
-1. The selected category is an exact approved category name, or Not identified where evidence is insufficient.
-2. Exactly one primary reason has been selected.
-3. The classification represents the customer's main reason for contacting L&G.
-4. The distinction between contact reason and demand driver has been respected.
-5. The evidence supports the selected category.
-6. Closely related categories have been considered.
-7. No unsupported intent has been inferred.
-8. The response is valid JSON with the required fields.
+1. `primary_contact_reason` is an exact approved PCR category or `Not identified` where evidence is insufficient.
+2. Exactly one PCR and one demand-driver category have been selected.
+3. The PCR represents the customer's main reason for contacting L&G.
+4. The demand driver represents the underlying event, circumstance, problem, or need that caused the contact.
+5. PCR evidence and demand-driver evidence support their respective classifications.
+6. Closely related PCR categories have been considered.
+7. No unsupported intent or personal circumstance has been inferred.
+8. The response is valid JSON with exactly the required fields.
 
 Now classify the following call transcript:
 

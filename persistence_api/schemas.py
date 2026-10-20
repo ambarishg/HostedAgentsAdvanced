@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from hosted_agent.schemas import AgentResult, ContactReason
 from shared.canonical import sha256_json
@@ -44,10 +44,39 @@ class PersistenceResponse(BaseModel):
 
 
 class InteractionHistoryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     request_id: UUID
     agent_name: str
     user_input: str
     result_json: dict[str, Any]
+    primary_contact_reason: str | None = None
+    demand_driver: str | None = None
+    confidence: str | None = None
+    evidence: list[str] = Field(default_factory=list)
+    demand_driver_evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_result_summary_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        result_json = value.get("result_json")
+        if not isinstance(result_json, dict):
+            return value
+
+        result = result_json.get("result")
+        if not isinstance(result, dict):
+            return value
+
+        extracted = dict(value)
+        extracted.setdefault("primary_contact_reason", result.get("primary_contact_reason"))
+        extracted.setdefault("demand_driver", result.get("demand_driver"))
+        extracted.setdefault("confidence", result.get("confidence"))
+        extracted.setdefault("evidence", result.get("evidence") or [])
+        extracted.setdefault("demand_driver_evidence", result.get("demand_driver_evidence") or [])
+        return extracted
 
 
 class InteractionHistoryResponse(BaseModel):

@@ -28,7 +28,7 @@ For single-request invocation, `user_input` must contain non-whitespace text. In
 
 ```json
 {
-  "response": "{\"success\":true,\"status\":\"completed\",\"request_id\":\"...\",\"interaction_id\":\"...\",\"agent_name\":\"pcr-agent\",\"agent_version\":\"1.0.0\",\"prompt_version\":\"local-v1\",\"schema_version\":\"generic-v1\",\"result\":{\"primary_contact_reason\":\"Not identified\",\"confidence\":\"Low\",\"evidence\":[],\"rationale\":\"The transcript does not provide enough information to identify a primary contact reason.\",\"secondary_reasons\":[]},\"summary\":null,\"warnings\":[],\"duration_ms\":34,\"completed_at\":\"...\"}"
+  "response": "{\"success\":true,\"status\":\"completed\",\"request_id\":\"...\",\"interaction_id\":\"...\",\"agent_name\":\"pcr-agent\",\"agent_version\":\"1.0.0\",\"prompt_version\":\"local-v1\",\"schema_version\":\"generic-v1\",\"result\":{\"primary_contact_reason\":\"Not identified\",\"demand_driver\":\"Not identified\",\"confidence\":\"Low\",\"evidence\":[],\"rationale\":\"The transcript does not provide enough information to identify a primary contact reason.\",\"secondary_reasons\":[],\"demand_driver_evidence\":[],\"demand_driver_rationale\":\"The transcript does not provide enough information to identify the underlying demand driver.\"},\"summary\":null,\"warnings\":[],\"duration_ms\":34,\"completed_at\":\"...\"}"
 }
 ```
 

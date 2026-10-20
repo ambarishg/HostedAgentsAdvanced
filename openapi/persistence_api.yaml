@@ -297,7 +297,7 @@ components:
           type: array
           items:
             type: object
-            required: [request_id, agent_name, user_input, result_json]
+            required: [request_id, agent_name, user_input, result_json, primary_contact_reason, demand_driver, confidence, evidence, demand_driver_evidence]
             properties:
               request_id:
                 type: string
@@ -309,6 +309,20 @@ components:
               result_json:
                 type: object
                 additionalProperties: true
+              primary_contact_reason:
+                type: [string, "null"]
+              demand_driver:
+                type: [string, "null"]
+              confidence:
+                type: [string, "null"]
+              evidence:
+                type: array
+                items:
+                  type: string
+              demand_driver_evidence:
+                type: array
+                items:
+                  type: string
         limit:
           type: integer
         offset:

@@ -40,15 +40,35 @@ ContactReason = Literal[
     "Other",
 ]
 
+DemandDriver = Literal[
+    "Change in personal circumstances",
+    "Affordability pressure",
+    "Payment failure",
+    "Unclear policy information",
+    "Missing or delayed documentation",
+    "Previous issue unresolved",
+    "Failed callback",
+    "Incorrect correspondence",
+    "Bereavement-related administration",
+    "Change in protection need",
+    "Spending / affordability review",
+    "Need for communication support",
+    "Other",
+    "Not identified",
+]
+
 
 class PCRClassification(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     primary_contact_reason: ContactReason | Literal["Not identified"]
+    demand_driver: DemandDriver
     confidence: Literal["High", "Medium", "Low"]
     evidence: list[str]
     rationale: str = Field(min_length=1)
     secondary_reasons: list[ContactReason]
+    demand_driver_evidence: list[str]
+    demand_driver_rationale: str = Field(min_length=1)
 
 
 class ModelAgentOutput(BaseModel):

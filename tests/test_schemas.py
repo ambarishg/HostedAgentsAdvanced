@@ -36,10 +36,13 @@ def test_model_agent_output_schema_is_compatible_with_strict_json_schema() -> No
 def test_pcr_classification_enforces_exact_fields_and_not_identified_value() -> None:
     classification = PCRClassification(
         primary_contact_reason="Not identified",
+        demand_driver="Not identified",
         confidence="Low",
         evidence=[],
         rationale="The transcript does not provide enough information.",
         secondary_reasons=[],
+        demand_driver_evidence=[],
+        demand_driver_rationale="The transcript does not provide enough information to identify the demand driver.",
     )
 
     assert classification.primary_contact_reason == "Not identified"
