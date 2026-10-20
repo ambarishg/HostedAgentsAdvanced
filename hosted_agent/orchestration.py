@@ -69,6 +69,7 @@ def consume_request_context() -> RequestContext:
     token = _request_context_token.get()
     if context is None or token is None:
         raise RuntimeError("Invocation request context was not initialized.")
+    # Reset the context so it cannot leak into a later invocation on the same worker.
     _request_context_token.set(None)
     _request_context.reset(token)
     return context
@@ -346,6 +347,7 @@ class HostedOrchestrator:
             downloader = blob.download_blob(max_concurrency=4)
             chunks = []
             for chunk in downloader.chunks():
+                # Azure may expose streamed chunks as bytes, memoryviews, or strings.
                 if isinstance(chunk, memoryview):
                     chunk = chunk.tobytes()
                 if isinstance(chunk, str):
@@ -479,6 +481,83 @@ class HostedOrchestrator:
             persistence_tool=persistence_tool,
         )
 
+    async def _process_batch_row_safely(
+        self,
+        *,
+        row_number: int,
+        row_value: str | None,
+        source: str,
+        source_label: str,
+        source_log_field: str,
+        file_name: str,
+        value_column: str,
+        model_agent_factory: Any | None,
+        persistence_tool: PersistenceApiTool | None,
+        missing_value_code: str,
+        failure_code: str,
+        raise_on_error: bool,
+    ) -> AgentExecutionResponse | None:
+        try:
+            return await self._process_batch_row(
+                row_number=row_number,
+                row_value=row_value,
+                source=source,
+                file_name=file_name,
+                value_column=value_column,
+                model_agent_factory=model_agent_factory,
+                persistence_tool=persistence_tool,
+                missing_value_code=missing_value_code,
+            )
+        except AgentExecutionError as error:
+            self._record_batch_row_error(
+                error,
+                source_label=source_label,
+                source_log_field=source_log_field,
+                file_name=file_name,
+                row_number=row_number,
+            )
+            if raise_on_error:
+                raise
+            return None
+        except Exception as exc:  # pragma: no cover - defensive path
+            error = AgentExecutionError(
+                failure_code,
+                f"Failed to process {source_label} row {row_number}: {exc}",
+                status_code=502,
+            )
+            self._record_batch_row_error(
+                error,
+                source_label=source_label,
+                source_log_field=source_log_field,
+                file_name=file_name,
+                row_number=row_number,
+                exception=exc,
+            )
+            if raise_on_error:
+                raise error from exc
+            return None
+
+    def _record_batch_row_error(
+        self,
+        error: AgentExecutionError,
+        *,
+        source_label: str,
+        source_log_field: str,
+        file_name: str,
+        row_number: int,
+        exception: Exception | None = None,
+    ) -> None:
+        log = logger.exception if exception else logger.warning
+        log(
+            f"{source_label.title()} row execution failed",
+            extra={
+                source_log_field: file_name,
+                "row_number": row_number,
+                "error_code": error.code,
+            },
+        )
+        self.last_errors.append({"row_number": row_number, "error": str(error), "code": error.code})
+
     @classmethod
     def _parse_blob_rows(
         cls,
@@ -577,54 +656,26 @@ class HostedOrchestrator:
 
             responses: list[AgentExecutionResponse] = []
             row_number = 0
+            # Read one row at a time to keep file I/O off the event loop.
             record = await asyncio.to_thread(self._read_local_csv_record, reader)
             while record is not None:
                 row_number += 1
-                try:
-                    response = await self._process_batch_row(
-                        row_number=row_number,
-                        row_value=self._normalize_text(record.get(value_column)),
-                        source="local_file_batch",
-                        file_name=file_name,
-                        value_column=value_column,
-                        model_agent_factory=model_agent_factory,
-                        persistence_tool=persistence_tool,
-                        missing_value_code="local_file_missing_value",
-                    )
+                response = await self._process_batch_row_safely(
+                    row_number=row_number,
+                    row_value=self._normalize_text(record.get(value_column)),
+                    source="local_file_batch",
+                    source_label="local file",
+                    source_log_field="file_name",
+                    file_name=file_name,
+                    value_column=value_column,
+                    model_agent_factory=model_agent_factory,
+                    persistence_tool=persistence_tool,
+                    missing_value_code="local_file_missing_value",
+                    failure_code="local_file_row_failed",
+                    raise_on_error=raise_on_error,
+                )
+                if response is not None:
                     responses.append(response)
-                except AgentExecutionError as exc:
-                    logger.warning(
-                        "Local file row execution failed",
-                        extra={
-                            "file_name": file_name,
-                            "row_number": row_number,
-                            "error_code": exc.code,
-                        },
-                    )
-                    self.last_errors.append(
-                        {"row_number": row_number, "error": str(exc), "code": exc.code}
-                    )
-                    if raise_on_error:
-                        raise
-                except Exception as exc:  # pragma: no cover - defensive path
-                    error = AgentExecutionError(
-                        "local_file_row_failed",
-                        f"Failed to process local file row {row_number}: {exc}",
-                        status_code=502,
-                    )
-                    logger.exception(
-                        "Local file row execution failed",
-                        extra={
-                            "file_name": file_name,
-                            "row_number": row_number,
-                            "error_code": error.code,
-                        },
-                    )
-                    self.last_errors.append(
-                        {"row_number": row_number, "error": str(error), "code": error.code}
-                    )
-                    if raise_on_error:
-                        raise error from exc
                 record = await asyncio.to_thread(self._read_local_csv_record, reader)
             return responses
         finally:
@@ -660,49 +711,22 @@ class HostedOrchestrator:
         responses: list[AgentExecutionResponse] = []
         self.last_errors = []
         for index, row in enumerate(rows, start=1):
-            try:
-                response = await self._process_batch_row(
-                    row_number=index,
-                    row_value=row.get("value"),
-                    source="blob_batch",
-                    file_name=blob_name,
-                    value_column=value_column,
-                    model_agent_factory=model_agent_factory,
-                    persistence_tool=persistence_tool,
-                    missing_value_code="blob_missing_value",
-                )
+            response = await self._process_batch_row_safely(
+                row_number=index,
+                row_value=row.get("value"),
+                source="blob_batch",
+                source_label="blob",
+                source_log_field="blob_name",
+                file_name=blob_name,
+                value_column=value_column,
+                model_agent_factory=model_agent_factory,
+                persistence_tool=persistence_tool,
+                missing_value_code="blob_missing_value",
+                failure_code="blob_row_failed",
+                raise_on_error=raise_on_error,
+            )
+            if response is not None:
                 responses.append(response)
-            except AgentExecutionError as exc:
-                logger.warning(
-                    "Blob row execution failed",
-                    extra={
-                        "blob_name": blob_name,
-                        "row_number": index,
-                        "error_code": exc.code,
-                    },
-                )
-                self.last_errors.append({"row_number": index, "error": str(exc), "code": exc.code})
-                if raise_on_error:
-                    raise
-            except Exception as exc:  # pragma: no cover - defensive path
-                error = AgentExecutionError(
-                    "blob_row_failed",
-                    f"Failed to process blob row {index}: {exc}",
-                    status_code=502,
-                )
-                logger.exception(
-                    "Blob row execution failed",
-                    extra={
-                        "blob_name": blob_name,
-                        "row_number": index,
-                        "error_code": error.code,
-                    },
-                )
-                self.last_errors.append(
-                    {"row_number": index, "error": str(error), "code": error.code}
-                )
-                if raise_on_error:
-                    raise error from exc
         return responses
 
     async def process_blob_file(
