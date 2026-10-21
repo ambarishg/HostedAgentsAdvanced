@@ -369,6 +369,8 @@ function App() {
     }
   };
 
+  const isAgentInteractionPage = ['interactions', 'pcr-analytics', 'demand-driver-analytics'].includes(page);
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -440,7 +442,7 @@ function App() {
         </details>
       </header>
 
-      <main className="main-panel">
+      <main className={`main-panel${isAgentInteractionPage ? ' main-panel--wide' : ''}`}>
         {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
           <section className="page-content">
@@ -505,27 +507,35 @@ function App() {
         )}
 
         {page === 'interactions' && (
-          <section className="page-content interaction-page">
+          <section className="page-content interaction-page interaction-page--history">
             <AgentInteractionNavigation
               page={page}
               onInteractions={openInteractions}
               onAnalytics={openPcrAnalytics}
               onDemandDriverAnalytics={openDemandDriverAnalytics}
             />
-            <div className="page-heading page-heading--row interaction-heading">
+            <div className="page-heading page-heading--row interaction-heading interaction-heading--history">
               <div>
-                <p className="eyebrow">History</p>
-                <h1>Agent interactions</h1>
-                <p>Browse requests and results recorded by your hosted agents.</p>
+                <p className="eyebrow">Interaction history</p>
+                <h1>Agent Interactions</h1>
+                <p>Review, search, and explore requests and results from your hosted agents.</p>
               </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => loadInteractions()}
-                disabled={isHistoryLoading || !authAccount}
-              >
-                {isHistoryLoading ? 'Loading…' : 'Refresh'}
-              </button>
+              <div className="interaction-heading__actions">
+                <div className="interaction-summary" aria-live="polite">
+                  <strong>{visibleInteractions.length}</strong>
+                  <span>shown</span>
+                  <span className="interaction-summary__total">of {interactions.length} loaded</span>
+                </div>
+                <button
+                  type="button"
+                  className="interaction-refresh"
+                  onClick={() => loadInteractions()}
+                  disabled={isHistoryLoading || !authAccount}
+                >
+                  <span aria-hidden="true">↻</span>
+                  {isHistoryLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
             </div>
 
             {historyError && <p className="error-message" role="alert">{historyError}</p>}
@@ -576,9 +586,6 @@ function App() {
                   <option value="agent-desc">Agent name (Z–A)</option>
                 </select>
               </label>
-              <p className="interaction-count" aria-live="polite">
-                Showing {visibleInteractions.length} of {interactions.length} loaded
-              </p>
             </div>
             {authAccount && isHistoryLoading && interactions.length === 0 ? (
               <p className="empty-state">Loading interactions…</p>
