@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ExternalRequest(BaseModel):
@@ -78,6 +78,45 @@ class ModelAgentOutput(BaseModel):
     result_json: PCRClassification
     summary: str | None = Field(default=None, max_length=20_000)
     warnings: list[str] = Field(default_factory=list, max_length=100)
+
+
+VulnerabilityCategory = Literal[
+    "Communication support",
+    "Understanding information",
+    "Financial difficulty",
+    "Ability to interact",
+    "Additional support",
+    "No vulnerability indicator identified",
+]
+
+
+class VulnerabilityIndicator(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    category: VulnerabilityCategory
+    evidence: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+
+class VulnerabilityClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    vulnerability_indicators: list[VulnerabilityIndicator] = Field(max_length=6)
+    confidence: Literal["High", "Medium", "Low"]
+    overall_rationale: str = Field(min_length=1)
+
+    @field_validator("vulnerability_indicators")
+    @classmethod
+    def validate_indicator_categories(
+        cls, indicators: list[VulnerabilityIndicator]
+    ) -> list[VulnerabilityIndicator]:
+        categories = [indicator.category for indicator in indicators]
+        if len(categories) != len(set(categories)):
+            raise ValueError("Vulnerability indicator categories must be unique.")
+        no_indicator = "No vulnerability indicator identified"
+        if no_indicator in categories and len(categories) != 1:
+            raise ValueError("The no-indicator outcome cannot accompany other categories.")
+        return indicators
 
 
 class AgentExecutionResponse(BaseModel):

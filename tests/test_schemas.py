@@ -5,7 +5,13 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from hosted_agent.schemas import AgentResult, ExternalRequest, ModelAgentOutput, PCRClassification
+from hosted_agent.schemas import (
+    AgentResult,
+    ExternalRequest,
+    ModelAgentOutput,
+    PCRClassification,
+    VulnerabilityClassification,
+)
 from persistence_api.schemas import PersistenceRequest, calculate_payload_hash
 
 
@@ -42,7 +48,9 @@ def test_pcr_classification_enforces_exact_fields_and_not_identified_value() -> 
         rationale="The transcript does not provide enough information.",
         secondary_reasons=[],
         demand_driver_evidence=[],
-        demand_driver_rationale="The transcript does not provide enough information to identify the demand driver.",
+        demand_driver_rationale=(
+            "The transcript does not provide enough information to identify the demand driver."
+        ),
     )
 
     assert classification.primary_contact_reason == "Not identified"
@@ -55,6 +63,63 @@ def test_pcr_classification_enforces_exact_fields_and_not_identified_value() -> 
         )
     with pytest.raises(ValidationError):
         PCRClassification.model_validate({**classification.model_dump(), "extra": "not allowed"})
+
+
+def test_vulnerability_classification_requires_a_valid_json_object_and_unique_categories() -> None:
+    classification = VulnerabilityClassification.model_validate(
+        {
+            "vulnerability_indicators": [
+                {
+                    "category": "Financial difficulty",
+                    "evidence": "The customer cannot afford the premium.",
+                    "rationale": "The customer explicitly describes affordability difficulty.",
+                }
+            ],
+            "confidence": "High",
+            "overall_rationale": "The indicator is supported by the customer's statement.",
+        }
+    )
+
+    assert classification.model_dump(mode="json")["confidence"] == "High"
+    schema = VulnerabilityClassification.model_json_schema()
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == {
+        "vulnerability_indicators",
+        "confidence",
+        "overall_rationale",
+    }
+    with pytest.raises(ValidationError):
+        VulnerabilityClassification.model_validate(
+            {
+                **classification.model_dump(),
+                "vulnerability_indicators": [
+                    *classification.model_dump()["vulnerability_indicators"],
+                    *classification.model_dump()["vulnerability_indicators"],
+                ],
+            }
+        )
+    with pytest.raises(ValidationError):
+        VulnerabilityClassification.model_validate(
+            {
+                **classification.model_dump(),
+                "extra": "not allowed",
+            }
+        )
+    with pytest.raises(ValidationError):
+        VulnerabilityClassification.model_validate(
+            {
+                "vulnerability_indicators": [
+                    {
+                        "category": "No vulnerability indicator identified",
+                        "evidence": "No explicit indicator was identified.",
+                        "rationale": "No approved indicator is supported.",
+                    },
+                    *classification.model_dump()["vulnerability_indicators"],
+                ],
+                "confidence": "High",
+                "overall_rationale": "The transcript supports one indicator.",
+            }
+        )
 
 
 def test_persistence_hash_covers_validated_fields() -> None:

@@ -5,6 +5,7 @@ import json
 import logging
 from dataclasses import replace
 from functools import lru_cache
+from pathlib import Path
 
 from agent_framework_foundry_hosting import InvocationRun, InvocationsHostServer
 from starlette.requests import Request
@@ -15,7 +16,11 @@ from hosted_agent.orchestration import (
     RequestContext,
     set_request_context,
 )
-from hosted_agent.prompt_provider import PromptProvider, create_prompt_provider
+from hosted_agent.prompt_provider import (
+    FilePromptProvider,
+    PromptProvider,
+    create_prompt_provider,
+)
 from hosted_agent.schemas import ExternalRequest
 
 logger = logging.getLogger(__name__)
@@ -32,6 +37,18 @@ def get_agent_settings() -> AgentSettings:
 @lru_cache(maxsize=1)
 def get_prompt_provider() -> PromptProvider:
     return create_prompt_provider(get_agent_settings())
+
+
+@lru_cache(maxsize=1)
+def get_vulnerability_prompt_provider() -> PromptProvider:
+    prompt_path = (
+        Path(__file__).resolve().parent.parent / "prompts" / "system_prompt.vulnerability.txt"
+    )
+    return FilePromptProvider(
+        prompt_path,
+        "vulnerability-v1",
+        get_agent_settings().max_prompt_bytes,
+    )
 
 
 async def parse_request(request: Request) -> InvocationRun:
@@ -78,6 +95,20 @@ async def parse_request(request: Request) -> InvocationRun:
         )
         raise ValueError("Configured system prompt is unavailable.") from None
 
+    try:
+        vulnerability_prompt = await asyncio.to_thread(
+            get_vulnerability_prompt_provider().load_prompt
+        )
+    except Exception:
+        logger.exception(
+            "Vulnerability system prompt could not be loaded",
+            extra={
+                "request_id": str(external_request.request_id),
+                "error_code": "vulnerability_prompt_unavailable",
+            },
+        )
+        raise ValueError("Bundled vulnerability system prompt is unavailable.") from None
+
     request_settings = settings
     if configured_batch_mode and not batch_mode:
         request_settings = replace(
@@ -94,6 +125,7 @@ async def parse_request(request: Request) -> InvocationRun:
         RequestContext(
             request=external_request,
             prompt=prompt,
+            vulnerability_prompt=vulnerability_prompt,
             started_at=asyncio.get_running_loop().time(),
             settings=request_settings,
         )

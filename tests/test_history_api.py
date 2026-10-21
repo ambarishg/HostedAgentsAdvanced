@@ -37,9 +37,21 @@ def test_history_endpoint_returns_interactions(api_settings, monkeypatch) -> Non
         user_input="What happened?",
         result_json={
             "schema_version": "generic-v1",
-            "result": {"primary_contact_reason": "Policy status"},
+            "result": {
+                "primary_contact_reason": "Policy status",
+                "demand_driver": "Payment failure",
+                "confidence": "High",
+                "evidence": ["The customer asked about their policy status."],
+                "demand_driver_evidence": ["The customer mentioned a failed payment."],
+                "vulnerability_assessment": {
+                    "vulnerability_indicator_category": ["Financial difficulty"],
+                    "vulnerability_indicator_evidence": ["The customer cannot afford the premium."],
+                },
+            },
         },
     )
+    assert item.vulnerability_indicator_category == ["Financial difficulty"]
+    assert item.vulnerability_indicator_evidence == ["The customer cannot afford the premium."]
     expected = InteractionHistoryResponse(items=[item], limit=25, offset=50, has_more=True)
 
     class TokenValidator:

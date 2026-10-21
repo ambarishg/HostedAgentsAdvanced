@@ -55,6 +55,8 @@ async def test_invocations_parser_validates_contract_and_pins_prompt(
     assert isinstance(hosted_agent, HostedOrchestrator)
     assert hosted_agent._context.request.user_input == user_input
     assert hosted_agent._context.prompt.version == "prompt-7"
+    assert hosted_agent._context.vulnerability_prompt.version == "vulnerability-v1"
+    assert "{{CALL_TRANSCRIPT}}" in hosted_agent._context.vulnerability_prompt.text
 
 
 @pytest.mark.asyncio

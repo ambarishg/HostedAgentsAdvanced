@@ -24,7 +24,7 @@ def agent_settings() -> AgentSettings:
         model_timeout_seconds=5,
         max_input_chars=1000,
         max_result_bytes=5000,
-        max_prompt_bytes=5000,
+        max_prompt_bytes=65_536,
         prompt_source="file",
         prompt_path=Path("prompt.txt"),
         prompt_version="dev-v1",
@@ -46,6 +46,11 @@ def request_context(agent_settings: AgentSettings) -> RequestContext:
         ),
         prompt=PromptSnapshot(
             text="Only follow these system instructions.", version="v1", sha256="a" * 64
+        ),
+        vulnerability_prompt=PromptSnapshot(
+            text="Analyze the transcript: {{CALL_TRANSCRIPT}}",
+            version="vulnerability-v1",
+            sha256="c" * 64,
         ),
         started_at=0.0,
         settings=agent_settings,

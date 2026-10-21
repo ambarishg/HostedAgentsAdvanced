@@ -614,7 +614,12 @@ function App() {
                       <div>
                         <h2>Result</h2>
                         {interaction.result_json
-                          ? <InteractionResult value={interaction.result_json} />
+                          ? (
+                            <InteractionResult
+                              value={interaction.result_json}
+                              requestId={interaction.request_id}
+                            />
+                          )
                           : <p className="result-empty">No result recorded.</p>}
                       </div>
                     </div>
@@ -957,8 +962,9 @@ function ResponsePanel({ status, message, error, result }) {
   );
 }
 
-function InteractionResult({ value }) {
+function InteractionResult({ value, requestId }) {
   const classification = value?.result_json || value?.result || value;
+  const assessment = classification?.vulnerability_assessment || {};
   const primaryEvidence = Array.isArray(classification?.evidence)
     ? classification.evidence
     : classification?.evidence
@@ -969,38 +975,128 @@ function InteractionResult({ value }) {
     : classification?.demand_driver_evidence
       ? [classification.demand_driver_evidence]
       : [];
+  const vulnerabilityIndicators = Array.isArray(assessment.vulnerability_indicators)
+    ? assessment.vulnerability_indicators
+    : [];
+  const vulnerabilityCategories = Array.isArray(assessment.vulnerability_indicator_category)
+    ? assessment.vulnerability_indicator_category
+    : assessment.vulnerability_indicator_category
+      ? [assessment.vulnerability_indicator_category]
+      : vulnerabilityIndicators.map(({ category }) => category).filter(Boolean);
+  const vulnerabilityEvidence = Array.isArray(assessment.vulnerability_indicator_evidence)
+    ? assessment.vulnerability_indicator_evidence
+    : assessment.vulnerability_indicator_evidence
+      ? [assessment.vulnerability_indicator_evidence]
+      : vulnerabilityIndicators.map(({ evidence }) => evidence).filter(Boolean);
+  const anchorPrefix = `interaction-${String(requestId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const evidenceTargets = [
+    {
+      key: 'evidence',
+      id: `${anchorPrefix}-evidence`,
+      label: 'Primary Contact Reason Evidence',
+      items: primaryEvidence,
+      jsonValue: { result: { evidence: primaryEvidence } },
+    },
+    {
+      key: 'demand_driver_evidence',
+      id: `${anchorPrefix}-demand-driver-evidence`,
+      label: 'Demand Driver Evidence',
+      items: demandEvidence,
+      jsonValue: { result: { demand_driver_evidence: demandEvidence } },
+    },
+    {
+      key: 'vulnerability_indicator_evidence',
+      id: `${anchorPrefix}-vulnerability-evidence`,
+      label: 'Vulnerability Indicator Evidence',
+      items: vulnerabilityEvidence,
+      jsonValue: {
+        result: {
+          vulnerability_assessment: {
+            vulnerability_indicator_evidence: vulnerabilityEvidence,
+          },
+        },
+      },
+    },
+  ];
+  const openResultJson = (event) => {
+    const card = event.currentTarget.closest('.interaction-card');
+    const details = card?.querySelector('.result-json-details');
+    if (details) details.open = true;
+  };
 
   return (
-    <dl className="classification-result">
-      <div>
-        <dt>Primary Contact Reason</dt>
-        <dd>{classification?.primary_contact_reason ?? 'Not provided'}</dd>
-      </div>
-      <div>
-        <dt>Demand Driver</dt>
-        <dd>{classification?.demand_driver ?? 'Not provided'}</dd>
-      </div>
-      <div>
-        <dt>Confidence Level</dt>
-        <dd>{classification?.confidence ?? 'Not provided'}</dd>
-      </div>
-      <div>
-        <dt>Primary Contact Reason Evidence</dt>
-        <dd>
-          {primaryEvidence.length > 0
-            ? <ul>{primaryEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-            : 'No evidence provided'}
-        </dd>
-      </div>
-      <div>
-        <dt>Demand Driver Evidence</dt>
-        <dd>
-          {demandEvidence.length > 0
-            ? <ul>{demandEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-            : 'No demand driver evidence provided'}
-        </dd>
-      </div>
-    </dl>
+    <>
+      <dl className="classification-result">
+        <div>
+          <dt>Primary Contact Reason</dt>
+          <dd>{classification?.primary_contact_reason ?? 'Not provided'}</dd>
+        </div>
+        <div>
+          <dt>Demand Driver</dt>
+          <dd>{classification?.demand_driver ?? 'Not provided'}</dd>
+        </div>
+        <div>
+          <dt>Confidence Level</dt>
+          <dd>{classification?.confidence ?? 'Not provided'}</dd>
+        </div>
+        <div>
+          <dt>
+            <a href={`#${anchorPrefix}-evidence`} onClick={openResultJson}>
+              Primary Contact Reason Evidence
+            </a>
+          </dt>
+          <dd>
+            {primaryEvidence.length > 0
+              ? <ul>{primaryEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+              : 'No evidence provided'}
+          </dd>
+        </div>
+        <div>
+          <dt>
+            <a href={`#${anchorPrefix}-demand-driver-evidence`} onClick={openResultJson}>
+              Demand Driver Evidence
+            </a>
+          </dt>
+          <dd>
+            {demandEvidence.length > 0
+              ? <ul>{demandEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+              : 'No demand driver evidence provided'}
+          </dd>
+        </div>
+        <div>
+          <dt>Vulnerability Indicator Category</dt>
+          <dd>
+            {vulnerabilityCategories.length > 0
+              ? <ul>{vulnerabilityCategories.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+              : 'No category provided'}
+          </dd>
+        </div>
+        <div>
+          <dt>
+            <a href={`#${anchorPrefix}-vulnerability-evidence`} onClick={openResultJson}>
+              Vulnerability Indicator Evidence
+            </a>
+          </dt>
+          <dd>
+            {vulnerabilityEvidence.length > 0
+              ? <ul>{vulnerabilityEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
+              : 'No vulnerability indicator evidence provided'}
+          </dd>
+        </div>
+      </dl>
+      <details className="result-json-details">
+        <summary>View Result JSON</summary>
+        <div className="result-json-evidence">
+          {evidenceTargets.map(({ key, id, label, jsonValue }) => (
+            <section id={id} key={key}>
+              <h3>{label}</h3>
+              <pre>{JSON.stringify(jsonValue, null, 2)}</pre>
+            </section>
+          ))}
+        </div>
+        <pre className="result-json-full">{JSON.stringify(value, null, 2)}</pre>
+      </details>
+    </>
   );
 }
 

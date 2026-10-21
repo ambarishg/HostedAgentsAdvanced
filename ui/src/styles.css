@@ -840,12 +840,75 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.classification-result dt a {
+  color: var(--accent-dark);
+  text-decoration: underline;
+  text-decoration-color: #a6c6bd;
+  text-underline-offset: 2px;
+}
+
+.classification-result dt a:hover,
+.classification-result dt a:focus-visible {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .classification-result ul {
   display: grid;
   gap: 5px;
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
+}
+
+.result-json-details {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.result-json-details > summary {
+  color: var(--accent-dark);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.result-json-evidence {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.result-json-evidence section {
+  scroll-margin-top: 16px;
+}
+
+.result-json-evidence h3 {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.result-json-details pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #f4f7f5;
+  color: var(--text);
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.result-json-details .result-json-full {
+  max-height: 420px;
+  margin-top: 12px;
 }
 
 .result-empty {

@@ -8,9 +8,18 @@ from uuid import UUID
 import pytest
 from agent_framework import AgentResponse, Message
 
-from hosted_agent.orchestration import AgentExecutionError, HostedOrchestrator, execute_request
+from hosted_agent.orchestration import (
+    AgentExecutionError,
+    HostedOrchestrator,
+    _prompt_provenance,
+    execute_request,
+)
 from hosted_agent.persistence_client import PersistenceToolError
-from hosted_agent.schemas import ModelAgentOutput, PCRClassification
+from hosted_agent.schemas import (
+    ModelAgentOutput,
+    PCRClassification,
+    VulnerabilityClassification,
+)
 
 PCR_RESULT = {
     "primary_contact_reason": "Policy information / clarification",
@@ -20,7 +29,31 @@ PCR_RESULT = {
     "rationale": "The customer contacted L&G to understand their policy.",
     "secondary_reasons": [],
     "demand_driver_evidence": ["The customer says they do not understand how the policy works."],
-    "demand_driver_rationale": "The customer is seeking clarification because the policy terms are unclear.",
+    "demand_driver_rationale": (
+        "The customer is seeking clarification because the policy terms are unclear."
+    ),
+}
+
+VULNERABILITY_RESULT = {
+    "vulnerability_indicators": [
+        {
+            "category": "Understanding information",
+            "evidence": "The customer says the policy terms are unclear.",
+            "rationale": (
+                "The customer explicitly describes difficulty understanding policy information."
+            ),
+        }
+    ],
+    "confidence": "High",
+    "overall_rationale": "The classification is based on the customer's explicit statement.",
+}
+
+VULNERABILITY_ASSESSMENT_RESULT = {
+    "vulnerability_indicator_category": ["Understanding information"],
+    "vulnerability_indicator_evidence": ["The customer says the policy terms are unclear."],
+    "vulnerability_indicators": VULNERABILITY_RESULT["vulnerability_indicators"],
+    "confidence": "High",
+    "overall_rationale": VULNERABILITY_RESULT["overall_rationale"],
 }
 
 
@@ -30,6 +63,17 @@ def make_model_output(
     return ModelAgentOutput(
         schema_version=schema_version,
         result_json=PCRClassification.model_validate(result_json or PCR_RESULT),
+    )
+
+
+def make_vulnerability_agent() -> FakeModelAgent:
+    output = VulnerabilityClassification.model_validate(VULNERABILITY_RESULT)
+    return FakeModelAgent(
+        AgentResponse(
+            messages=Message("assistant", [json.dumps(VULNERABILITY_RESULT)]),
+            value=output,
+            finish_reason="stop",
+        )
     )
 
 
@@ -78,14 +122,22 @@ async def test_success_is_returned_only_after_commit_confirmation(request_contex
     persistence = FakePersistenceTool()
 
     response = await execute_request(
-        request_context, model_agent=model, persistence_tool=persistence
+        request_context,
+        model_agent=model,
+        vulnerability_agent=make_vulnerability_agent(),
+        persistence_tool=persistence,
     )
 
     assert response.success is True
     assert response.interaction_id == UUID(int=1)
     assert persistence.saved["request_id"] == request_context.request.request_id
-    assert persistence.saved["prompt_hash"] == request_context.prompt.sha256
-    assert persistence.saved["result"].result == PCR_RESULT
+    expected_prompt_version, expected_prompt_hash = _prompt_provenance(request_context)
+    assert persistence.saved["prompt_version"] == expected_prompt_version
+    assert persistence.saved["prompt_hash"] == expected_prompt_hash
+    assert response.prompt_version == expected_prompt_version
+    assert persistence.saved["result"].result == response.result
+    assert response.result["primary_contact_reason"] == PCR_RESULT["primary_contact_reason"]
+    assert response.result["vulnerability_assessment"] == VULNERABILITY_ASSESSMENT_RESULT
     assert model.inputs == ["hello"]
 
 
@@ -120,6 +172,16 @@ async def test_empty_transcript_returns_persisted_not_identified_result(request_
             "The transcript does not provide enough information to identify the "
             "underlying demand driver."
         ),
+        "vulnerability_assessment": {
+            "vulnerability_indicator_category": [],
+            "vulnerability_indicator_evidence": [],
+            "vulnerability_indicators": [],
+            "confidence": "Low",
+            "overall_rationale": (
+                "The transcript is empty, so there is insufficient usable evidence "
+                "to assess vulnerability indicators."
+            ),
+        },
     }
     assert persistence.saved["user_input"] == "  "
     assert persistence.saved["result"].result == response.result
@@ -137,6 +199,48 @@ async def test_invalid_structured_output_is_not_persisted(request_context) -> No
 
     with pytest.raises(AgentExecutionError, match="valid structured JSON"):
         await execute_request(request_context, model_agent=model, persistence_tool=persistence)
+
+    assert persistence.saved is None
+
+
+@pytest.mark.asyncio
+async def test_invalid_vulnerability_output_is_not_persisted(request_context) -> None:
+    model = FakeModelAgent(
+        AgentResponse(
+            messages=Message(
+                "assistant",
+                [json.dumps({"schema_version": "generic-v1", "result_json": PCR_RESULT})],
+            ),
+            value=make_model_output(),
+            finish_reason="stop",
+        )
+    )
+    vulnerability_model = FakeModelAgent(
+        AgentResponse(
+            messages=Message(
+                "assistant",
+                [
+                    json.dumps(
+                        {
+                            "vulnerability_indicators": [],
+                            "confidence": "Uncertain",
+                            "overall_rationale": "Assessment.",
+                        }
+                    )
+                ],
+            ),
+            finish_reason="stop",
+        )
+    )
+    persistence = FakePersistenceTool()
+
+    with pytest.raises(AgentExecutionError, match="valid structured JSON object"):
+        await execute_request(
+            request_context,
+            model_agent=model,
+            vulnerability_agent=vulnerability_model,
+            persistence_tool=persistence,
+        )
 
     assert persistence.saved is None
 
@@ -202,6 +306,7 @@ async def test_model_timeout_does_not_persist(request_context, agent_settings) -
     context = request_context.__class__(
         request=request_context.request,
         prompt=request_context.prompt,
+        vulnerability_prompt=request_context.vulnerability_prompt,
         started_at=request_context.started_at,
         settings=replace(agent_settings, model_timeout_seconds=0.01),
     )
@@ -230,6 +335,7 @@ async def test_api_timeout_never_returns_success(request_context) -> None:
         await execute_request(
             request_context,
             model_agent=model,
+            vulnerability_agent=make_vulnerability_agent(),
             persistence_tool=FailedPersistenceTool(),
         )
 
@@ -285,6 +391,7 @@ async def test_blob_file_rows_are_processed_individually(request_context, monkey
         blob_name="customers.csv",
         value_column="customer",
         model_agent_factory=factory,
+        vulnerability_agent_factory=lambda _: make_vulnerability_agent(),
         persistence_tool=FakePersistenceTool(),
     )
 
@@ -337,6 +444,7 @@ async def test_blob_row_errors_are_recorded_without_aborting(request_context, mo
         blob_name="customers.csv",
         value_column="customer",
         model_agent_factory=factory,
+        vulnerability_agent_factory=lambda _: make_vulnerability_agent(),
         persistence_tool=FakePersistenceTool(),
     )
 
@@ -393,6 +501,7 @@ async def test_local_file_column_values_are_processed_and_persisted(
         file_path=str(file_path),
         value_column="customer",
         model_agent_factory=factory,
+        vulnerability_agent_factory=lambda _: make_vulnerability_agent(),
         persistence_tool=persistence,
     )
 
@@ -429,6 +538,7 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
         file_path=str(file_path),
         value_column="customer",
         model_agent_factory=factory,
+        vulnerability_agent_factory=lambda _: make_vulnerability_agent(),
         persistence_tool=FakePersistenceTool(),
     )
 
@@ -449,6 +559,16 @@ async def test_local_file_row_errors_are_recorded_and_processing_continues(
             "The transcript does not provide enough information to identify the "
             "underlying demand driver."
         ),
+        "vulnerability_assessment": {
+            "vulnerability_indicator_category": [],
+            "vulnerability_indicator_evidence": [],
+            "vulnerability_indicators": [],
+            "confidence": "Low",
+            "overall_rationale": (
+                "The transcript is empty, so there is insufficient usable evidence "
+                "to assess vulnerability indicators."
+            ),
+        },
     }
     assert orchestrator.last_errors == []
 

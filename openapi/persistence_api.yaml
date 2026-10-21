@@ -297,7 +297,7 @@ components:
           type: array
           items:
             type: object
-            required: [request_id, agent_name, user_input, result_json, primary_contact_reason, demand_driver, confidence, evidence, demand_driver_evidence]
+            required: [request_id, agent_name, user_input, result_json, primary_contact_reason, demand_driver, confidence, evidence, demand_driver_evidence, vulnerability_indicator_category, vulnerability_indicator_evidence]
             properties:
               request_id:
                 type: string
@@ -320,6 +320,14 @@ components:
                 items:
                   type: string
               demand_driver_evidence:
+                type: array
+                items:
+                  type: string
+              vulnerability_indicator_category:
+                type: array
+                items:
+                  type: string
+              vulnerability_indicator_evidence:
                 type: array
                 items:
                   type: string

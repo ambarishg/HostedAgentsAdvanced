@@ -56,6 +56,8 @@ class InteractionHistoryItem(BaseModel):
     confidence: str | None = None
     evidence: list[str] = Field(default_factory=list)
     demand_driver_evidence: list[str] = Field(default_factory=list)
+    vulnerability_indicator_category: list[str] = Field(default_factory=list)
+    vulnerability_indicator_evidence: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -77,6 +79,25 @@ class InteractionHistoryItem(BaseModel):
         extracted.setdefault("confidence", result.get("confidence"))
         extracted.setdefault("evidence", result.get("evidence") or [])
         extracted.setdefault("demand_driver_evidence", result.get("demand_driver_evidence") or [])
+        assessment = result.get("vulnerability_assessment")
+        if isinstance(assessment, dict):
+            categories = assessment.get("vulnerability_indicator_category")
+            evidence = assessment.get("vulnerability_indicator_evidence")
+            indicators = assessment.get("vulnerability_indicators")
+            if not isinstance(categories, list) and isinstance(indicators, list):
+                categories = [
+                    item.get("category")
+                    for item in indicators
+                    if isinstance(item, dict) and isinstance(item.get("category"), str)
+                ]
+            if not isinstance(evidence, list) and isinstance(indicators, list):
+                evidence = [
+                    item.get("evidence")
+                    for item in indicators
+                    if isinstance(item, dict) and isinstance(item.get("evidence"), str)
+                ]
+            extracted.setdefault("vulnerability_indicator_category", categories or [])
+            extracted.setdefault("vulnerability_indicator_evidence", evidence or [])
         return extracted
 
 
