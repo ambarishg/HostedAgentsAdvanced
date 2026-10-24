@@ -48,6 +48,8 @@ class ApiSettings:
     pg_pool_timeout_seconds: int
     pg_connect_timeout_seconds: int
     log_level: str
+    pg_sslmode: str = "verify-full"
+    pg_sslrootcert: str | None = None
 
     @classmethod
     def from_env(cls) -> ApiSettings:
@@ -74,6 +76,10 @@ class ApiSettings:
         auth_mode = os.getenv("PG_AUTH_MODE", "entra").strip().lower()
         if auth_mode not in {"entra", "password"}:
             raise ValueError("PG_AUTH_MODE must be 'entra' or 'password'.")
+        sslmode = os.getenv("PGSSLMODE", "verify-full").strip().lower()
+        if sslmode not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
+            raise ValueError("PGSSLMODE must be a valid libpq SSL mode.")
+        sslrootcert = os.getenv("PGSSLROOTCERT", "").strip() or None
         password = os.getenv("PGPASSWORD") or None
         key_vault_url = os.getenv("KEY_VAULT_URL", "").strip() or None
         key_vault_secret = os.getenv("KEY_VAULT_SECRET_NAME", "").strip() or None
@@ -131,6 +137,8 @@ class ApiSettings:
             pg_pool_timeout_seconds=_int_setting("PG_POOL_TIMEOUT_SECONDS", 20),
             pg_connect_timeout_seconds=_int_setting("PG_CONNECT_TIMEOUT_SECONDS", 10),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            pg_sslmode=sslmode,
+            pg_sslrootcert=sslrootcert,
         )
 
     def sqlalchemy_url(self) -> URL:

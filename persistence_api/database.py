@@ -32,11 +32,14 @@ def _get_database_password(settings: ApiSettings) -> str:
 def get_engine() -> Engine:
     settings = get_settings()
     connect_args: dict[str, Any] = {
-        "sslmode": "verify-full",
-        "sslrootcert": certifi.where(),
+        "sslmode": settings.pg_sslmode,
         "connect_timeout": settings.pg_connect_timeout_seconds,
         "options": settings.safe_connection_options(),
     }
+    if settings.pg_sslmode in {"verify-ca", "verify-full"}:
+        connect_args["sslrootcert"] = settings.pg_sslrootcert or certifi.where()
+    elif settings.pg_sslrootcert:
+        connect_args["sslrootcert"] = settings.pg_sslrootcert
     if settings.pg_auth_mode == "password":
         connect_args["password"] = _get_database_password(settings)
 
