@@ -8,7 +8,7 @@ from typing import get_args
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-from hosted_agent.schemas import ContactReason, DemandDriver
+from hosted_agent.schemas import ContactReason, DemandDriver, VulnerabilityCategory
 from persistence_api.config import ApiSettings
 from persistence_api.repository import (
     IdempotencyConflict,
@@ -24,6 +24,8 @@ from persistence_api.schemas import (
     PcrAnalyticsResponse,
     PersistenceRequest,
     PersistenceResponse,
+    VulnerabilityAnalyticsItem,
+    VulnerabilityAnalyticsResponse,
     calculate_payload_hash,
 )
 
@@ -183,13 +185,13 @@ class PersistenceService:
         *,
         start_date: date | None,
         end_date: date | None,
-        contact_reasons: list[str],
+        categories: list[str],
     ) -> DemandDriverAnalyticsResponse:
         try:
             rows = self._repository.demand_driver_analytics(
                 start_date=start_date,
                 end_date=end_date,
-                contact_reasons=contact_reasons,
+                categories=categories,
             )
         except OperationalError as exc:
             logger.error("Database connection failed", extra={"error_code": "database_unavailable"})
@@ -208,7 +210,41 @@ class PersistenceService:
                 )
                 for row in rows
             ],
-            available_reasons=[*get_args(ContactReason), "Not identified"],
+            available_categories=list(get_args(DemandDriver)),
+            total_count=total,
+        )
+
+    def vulnerability_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        categories: list[str],
+    ) -> VulnerabilityAnalyticsResponse:
+        try:
+            rows = self._repository.vulnerability_analytics(
+                start_date=start_date,
+                end_date=end_date,
+                categories=categories,
+            )
+        except OperationalError as exc:
+            logger.error("Database connection failed", extra={"error_code": "database_unavailable"})
+            raise DatabaseUnavailable("Database is temporarily unavailable.") from exc
+        except SQLAlchemyError as exc:
+            logger.error("Database query failed", extra={"error_code": "database_error"})
+            raise PersistenceFailure("Database query failed.") from exc
+
+        total = sum(int(row["count"]) for row in rows)
+        return VulnerabilityAnalyticsResponse(
+            items=[
+                VulnerabilityAnalyticsItem(
+                    reason=str(row["reason"]),
+                    count=int(row["count"]),
+                    percentage=(int(row["count"]) / total * 100) if total else 0,
+                )
+                for row in rows
+            ],
+            available_categories=list(get_args(VulnerabilityCategory)),
             total_count=total,
         )
 

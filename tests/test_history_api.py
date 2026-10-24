@@ -9,13 +9,14 @@ import azure.functions as func
 import pytest
 
 import function_app
-from hosted_agent.schemas import ContactReason
+from hosted_agent.schemas import ContactReason, DemandDriver, VulnerabilityCategory
 from persistence_api.auth import AuthenticationError
 from persistence_api.schemas import (
     DemandDriverAnalyticsResponse,
     InteractionHistoryItem,
     InteractionHistoryResponse,
     PcrAnalyticsResponse,
+    VulnerabilityAnalyticsResponse,
 )
 
 
@@ -159,8 +160,8 @@ def test_demand_driver_analytics_endpoint_passes_filters_to_service(
     api_settings, monkeypatch
 ) -> None:
     expected = DemandDriverAnalyticsResponse(
-        items=[{"reason": "Policy clarity", "count": 2, "percentage": 100}],
-        available_reasons=[*get_args(ContactReason), "Not identified"],
+        items=[{"reason": "Payment failure", "count": 2, "percentage": 100}],
+        available_categories=list(get_args(DemandDriver)),
         total_count=2,
     )
 
@@ -174,11 +175,11 @@ def test_demand_driver_analytics_endpoint_passes_filters_to_service(
             *,
             start_date: date | None,
             end_date: date | None,
-            contact_reasons: list[str],
+            categories: list[str],
         ) -> DemandDriverAnalyticsResponse:
             assert start_date == date(2025, 2, 1)
             assert end_date == date(2025, 2, 28)
-            assert contact_reasons == ["Policy status", "Complaint"]
+            assert categories == ["Payment failure", "Affordability pressure"]
             return expected
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
@@ -190,13 +191,103 @@ def test_demand_driver_analytics_endpoint_passes_filters_to_service(
             params={
                 "start_date": "2025-02-01",
                 "end_date": "2025-02-28",
-                "contact_reasons": "Policy status,Complaint,Policy status",
+                "categories": "Payment failure,Affordability pressure,Payment failure",
             }
         )
     )
 
     assert response.status_code == 200
     assert json.loads(response.get_body()) == expected.model_dump(mode="json")
+
+
+def test_demand_driver_analytics_endpoint_rejects_invalid_category(
+    api_settings, monkeypatch
+) -> None:
+    class TokenValidator:
+        def validate(self, authorization: str | None) -> None:
+            return None
+
+    monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(function_app, "_token_validator", lambda: TokenValidator())
+    monkeypatch.setattr(
+        function_app,
+        "_persistence_service",
+        lambda: pytest.fail("service must not run for an invalid demand driver category"),
+    )
+
+    response = function_app.get_demand_driver_analytics(
+        make_request(params={"categories": "Unknown"})
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.get_body())["error"]["code"] == "invalid_demand_driver_category"
+
+
+def test_vulnerability_analytics_endpoint_passes_filters_to_service(
+    api_settings, monkeypatch
+) -> None:
+    expected = VulnerabilityAnalyticsResponse(
+        items=[{"reason": "Financial difficulty", "count": 2, "percentage": 100}],
+        available_categories=list(get_args(VulnerabilityCategory)),
+        total_count=2,
+    )
+
+    class TokenValidator:
+        def validate(self, authorization: str | None) -> None:
+            assert authorization is None
+
+    class Service:
+        def vulnerability_analytics(
+            self,
+            *,
+            start_date: date | None,
+            end_date: date | None,
+            categories: list[str],
+        ) -> VulnerabilityAnalyticsResponse:
+            assert start_date == date(2025, 3, 1)
+            assert end_date == date(2025, 3, 31)
+            assert categories == ["Financial difficulty", "Communication support"]
+            return expected
+
+    monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(function_app, "_token_validator", lambda: TokenValidator())
+    monkeypatch.setattr(function_app, "_persistence_service", lambda: Service())
+
+    response = function_app.get_vulnerability_analytics(
+        make_request(
+            params={
+                "start_date": "2025-03-01",
+                "end_date": "2025-03-31",
+                "categories": ("Financial difficulty,Communication support,Financial difficulty"),
+            }
+        )
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.get_body()) == expected.model_dump(mode="json")
+
+
+def test_vulnerability_analytics_endpoint_rejects_invalid_category(
+    api_settings, monkeypatch
+) -> None:
+    class TokenValidator:
+        def validate(self, authorization: str | None) -> None:
+            return None
+
+    monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(function_app, "_token_validator", lambda: TokenValidator())
+    monkeypatch.setattr(
+        function_app,
+        "_persistence_service",
+        lambda: pytest.fail("service must not run for an invalid vulnerability category"),
+    )
+
+    response = function_app.get_vulnerability_analytics(
+        make_request(params={"categories": "Unknown"})
+    )
+
+    assert response.status_code == 400
+    assert json.loads(response.get_body())["error"]["code"] == "invalid_vulnerability_category"
 
 
 @pytest.mark.parametrize(

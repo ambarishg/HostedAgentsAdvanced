@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, delete, func, select
+from sqlalchemy import Engine, delete, func, select, true
 from sqlalchemy.dialects.postgresql import insert
 
 from persistence_api.models import AgentInteraction
@@ -135,9 +135,8 @@ class InteractionRepository:
         *,
         start_date: date | None,
         end_date: date | None,
-        contact_reasons: list[str],
+        categories: list[str],
     ) -> list[dict[str, Any]]:
-        pcr_reason = AgentInteraction.result_json["result"]["primary_contact_reason"].astext
         demand_driver = AgentInteraction.result_json["result"]["demand_driver"].astext
         statement = (
             select(demand_driver.label("reason"), func.count(AgentInteraction.id).label("count"))
@@ -154,8 +153,48 @@ class InteractionRepository:
                 AgentInteraction.created_at
                 < datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=UTC)
             )
-        if contact_reasons:
-            statement = statement.where(pcr_reason.in_(contact_reasons))
+        if categories:
+            statement = statement.where(demand_driver.in_(categories))
+
+        with self._engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
+
+    def vulnerability_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        categories: list[str],
+    ) -> list[dict[str, Any]]:
+        category_values = AgentInteraction.result_json["result"]["vulnerability_assessment"][
+            "vulnerability_indicator_category"
+        ]
+        category_rows = (
+            func.jsonb_array_elements_text(category_values)
+            .table_valued("category")
+            .render_derived(name="vulnerability_categories")
+        )
+        category = category_rows.c.category
+        statement = (
+            select(category.label("reason"), func.count(AgentInteraction.id).label("count"))
+            .select_from(AgentInteraction)
+            .join(category_rows, true())
+            .where(AgentInteraction.status == "completed", category.is_not(None))
+            .group_by(category)
+            .order_by(func.count(AgentInteraction.id).desc(), category.asc())
+        )
+        if start_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at >= datetime.combine(start_date, time.min, tzinfo=UTC)
+            )
+        if end_date is not None:
+            statement = statement.where(
+                AgentInteraction.created_at
+                < datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=UTC)
+            )
+        if categories:
+            statement = statement.where(category.in_(categories))
 
         with self._engine.connect() as connection:
             rows = connection.execute(statement).mappings().all()

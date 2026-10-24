@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import get_args
 
 import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
 
+from hosted_agent.schemas import DemandDriver
 from persistence_api.repository import InteractionRepository
 from persistence_api.schemas import PersistenceRequest, PersistenceResponse, calculate_payload_hash
 from persistence_api.service import (
@@ -13,6 +16,108 @@ from persistence_api.service import (
     PayloadHashMismatch,
     PersistenceService,
 )
+
+
+def test_vulnerability_analytics_query_names_the_expanded_category_column() -> None:
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{"reason": "Financial difficulty", "count": 2}]
+
+    class Connection:
+        def execute(self, statement):
+            compiled = statement.compile(dialect=postgresql.dialect())
+            sql = str(compiled)
+            assert "AS vulnerability_categories(category)" in sql
+            assert "jsonb_array_elements_text" in sql
+            assert ["Financial difficulty"] in compiled.params.values()
+            return Result()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Engine:
+        def connect(self):
+            return Connection()
+
+    rows = InteractionRepository(Engine()).vulnerability_analytics(
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        categories=["Financial difficulty"],
+    )
+
+    assert rows == [{"reason": "Financial difficulty", "count": 2}]
+
+
+def test_demand_driver_analytics_query_filters_by_selected_categories() -> None:
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{"reason": "Payment failure", "count": 2}]
+
+    class Connection:
+        def execute(self, statement):
+            compiled = statement.compile(dialect=postgresql.dialect())
+            sql = str(compiled)
+            assert "->>" in sql
+            assert ["Payment failure"] in compiled.params.values()
+            return Result()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Engine:
+        def connect(self):
+            return Connection()
+
+    rows = InteractionRepository(Engine()).demand_driver_analytics(
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        categories=["Payment failure"],
+    )
+
+    assert rows == [{"reason": "Payment failure", "count": 2}]
+
+
+def test_service_returns_demand_driver_category_options_and_aggregates(
+    api_settings, monkeypatch
+) -> None:
+    def demand_driver_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        categories: list[str],
+    ) -> list[dict[str, int | str]]:
+        assert start_date is None
+        assert end_date is None
+        assert categories == []
+        return [{"reason": "Payment failure", "count": 2}]
+
+    monkeypatch.setattr(InteractionRepository, "demand_driver_analytics", demand_driver_analytics)
+    service = PersistenceService(api_settings, engine=None)
+
+    response = service.demand_driver_analytics(
+        start_date=None,
+        end_date=None,
+        categories=[],
+    )
+
+    assert response.total_count == 2
+    assert response.available_categories == list(get_args(DemandDriver))
+    assert [(item.reason, item.count, item.percentage) for item in response.items] == [
+        ("Payment failure", 2, 100),
+    ]
 
 
 def make_request() -> PersistenceRequest:
@@ -113,4 +218,36 @@ def test_service_returns_backend_aggregates_and_percentages(api_settings, monkey
     assert [(item.reason, item.count, item.percentage) for item in response.items] == [
         ("Policy status", 3, 75),
         ("Complaint", 1, 25),
+    ]
+
+
+def test_service_returns_vulnerability_category_aggregates(api_settings, monkeypatch) -> None:
+    def vulnerability_analytics(
+        self,
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        categories: list[str],
+    ) -> list[dict[str, int | str]]:
+        assert start_date == date(2025, 1, 1)
+        assert end_date == date(2025, 1, 31)
+        assert categories == ["Financial difficulty"]
+        return [
+            {"reason": "Financial difficulty", "count": 3},
+            {"reason": "Communication support", "count": 1},
+        ]
+
+    monkeypatch.setattr(InteractionRepository, "vulnerability_analytics", vulnerability_analytics)
+    service = PersistenceService(api_settings, engine=None)
+
+    response = service.vulnerability_analytics(
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        categories=["Financial difficulty"],
+    )
+
+    assert response.total_count == 4
+    assert [(item.reason, item.count, item.percentage) for item in response.items] == [
+        ("Financial difficulty", 3, 75),
+        ("Communication support", 1, 25),
     ]

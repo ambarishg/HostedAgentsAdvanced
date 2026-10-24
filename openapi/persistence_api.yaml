@@ -192,6 +192,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /demand-driver-analytics:
+    get:
+      operationId: get_demand_driver_analytics
+      summary: Get aggregated demand driver analytics
+      description: Returns server-aggregated demand driver counts for completed interactions. Date boundaries are inclusive and interpreted as UTC dates.
+      security:
+        - entraBearer: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Include interactions created on or after this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          description: Include interactions created on or before this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: categories
+          in: query
+          required: false
+          description: Comma-separated list of demand driver categories to include.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregated counts and available demand driver category filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemandDriverAnalytics"
+        "400":
+          description: Invalid date range or demand driver category filter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Entra access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Required caller permission is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Persistence query failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: PostgreSQL is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /vulnerability-analytics:
+    get:
+      operationId: get_vulnerability_analytics
+      summary: Get aggregated vulnerability indicator category analytics
+      description: Returns server-aggregated indicator category counts for completed interactions. Date boundaries are inclusive and interpreted as UTC dates.
+      security:
+        - entraBearer: []
+      parameters:
+        - name: start_date
+          in: query
+          required: false
+          description: Include interactions created on or after this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          description: Include interactions created on or before this UTC date.
+          schema:
+            type: string
+            format: date
+        - name: categories
+          in: query
+          required: false
+          description: Comma-separated list of vulnerability indicator categories to include.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Aggregated vulnerability indicator counts and available category filters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VulnerabilityAnalytics"
+        "400":
+          description: Invalid date range or vulnerability category filter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Entra access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Required caller permission is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Persistence query failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: PostgreSQL is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     entraBearer:
@@ -360,6 +490,102 @@ components:
           type: array
           items:
             type: string
+        total_count:
+          type: integer
+          minimum: 0
+    DemandDriverAnalytics:
+      type: object
+      required: [items, available_categories, total_count]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [reason, count, percentage]
+            properties:
+              reason:
+                type: string
+                enum:
+                  - Change in personal circumstances
+                  - Affordability pressure
+                  - Payment failure
+                  - Unclear policy information
+                  - Missing or delayed documentation
+                  - Previous issue unresolved
+                  - Failed callback
+                  - Incorrect correspondence
+                  - Bereavement-related administration
+                  - Change in protection need
+                  - Spending / affordability review
+                  - Need for communication support
+                  - Other
+                  - Not identified
+              count:
+                type: integer
+                minimum: 0
+              percentage:
+                type: number
+                minimum: 0
+                maximum: 100
+        available_categories:
+          type: array
+          items:
+            type: string
+            enum:
+              - Change in personal circumstances
+              - Affordability pressure
+              - Payment failure
+              - Unclear policy information
+              - Missing or delayed documentation
+              - Previous issue unresolved
+              - Failed callback
+              - Incorrect correspondence
+              - Bereavement-related administration
+              - Change in protection need
+              - Spending / affordability review
+              - Need for communication support
+              - Other
+              - Not identified
+        total_count:
+          type: integer
+          minimum: 0
+    VulnerabilityAnalytics:
+      type: object
+      required: [items, available_categories, total_count]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [reason, count, percentage]
+            properties:
+              reason:
+                type: string
+                enum:
+                  - Communication support
+                  - Understanding information
+                  - Financial difficulty
+                  - Ability to interact
+                  - Additional support
+                  - No vulnerability indicator identified
+              count:
+                type: integer
+                minimum: 0
+              percentage:
+                type: number
+                minimum: 0
+                maximum: 100
+        available_categories:
+          type: array
+          items:
+            type: string
+            enum:
+              - Communication support
+              - Understanding information
+              - Financial difficulty
+              - Ability to interact
+              - Additional support
+              - No vulnerability indicator identified
         total_count:
           type: integer
           minimum: 0

@@ -12,6 +12,7 @@ const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
 const defaultAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_ANALYTICS_URL || '/api/pcr-analytics';
 const defaultDemandDriverAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_DEMAND_DRIVER_ANALYTICS_URL || '/api/demand-driver-analytics';
+const defaultVulnerabilityAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_VULNERABILITY_ANALYTICS_URL || '/api/vulnerability-analytics';
 
 const createRequestBody = (userInput, requestId, batchMode) => ({
   request_id: requestId,
@@ -51,6 +52,7 @@ function App() {
   const [historyUrl, setHistoryUrl] = useState(defaultHistoryUrl);
   const [analyticsUrl, setAnalyticsUrl] = useState(defaultAnalyticsUrl);
   const [demandDriverAnalyticsUrl, setDemandDriverAnalyticsUrl] = useState(defaultDemandDriverAnalyticsUrl);
+  const [vulnerabilityAnalyticsUrl, setVulnerabilityAnalyticsUrl] = useState(defaultVulnerabilityAnalyticsUrl);
   const [page, setPage] = useState('home');
   const [authAccount, setAuthAccount] = useState(null);
   const [authReady, setAuthReady] = useState(!isEntraConfigured);
@@ -74,16 +76,24 @@ function App() {
   const [analytics, setAnalytics] = useState([]);
   const [demandDriverAnalyticsStartDate, setDemandDriverAnalyticsStartDate] = useState('');
   const [demandDriverAnalyticsEndDate, setDemandDriverAnalyticsEndDate] = useState('');
-  const [selectedDemandDriverContactReasons, setSelectedDemandDriverContactReasons] = useState([]);
+  const [selectedDemandDriverCategories, setSelectedDemandDriverCategories] = useState([]);
   const [analyticsTotal, setAnalyticsTotal] = useState(0);
   const [availableContactReasons, setAvailableContactReasons] = useState([]);
   const [analyticsError, setAnalyticsError] = useState('');
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
   const [demandDriverAnalytics, setDemandDriverAnalytics] = useState([]);
   const [demandDriverAnalyticsTotal, setDemandDriverAnalyticsTotal] = useState(0);
-  const [availableDemandDriverReasons, setAvailableDemandDriverReasons] = useState([]);
+  const [availableDemandDriverCategories, setAvailableDemandDriverCategories] = useState([]);
   const [demandDriverAnalyticsError, setDemandDriverAnalyticsError] = useState('');
   const [isDemandDriverAnalyticsLoading, setIsDemandDriverAnalyticsLoading] = useState(false);
+  const [vulnerabilityAnalyticsStartDate, setVulnerabilityAnalyticsStartDate] = useState('');
+  const [vulnerabilityAnalyticsEndDate, setVulnerabilityAnalyticsEndDate] = useState('');
+  const [selectedVulnerabilityCategories, setSelectedVulnerabilityCategories] = useState([]);
+  const [availableVulnerabilityCategories, setAvailableVulnerabilityCategories] = useState([]);
+  const [vulnerabilityAnalytics, setVulnerabilityAnalytics] = useState([]);
+  const [vulnerabilityAnalyticsTotal, setVulnerabilityAnalyticsTotal] = useState(0);
+  const [vulnerabilityAnalyticsError, setVulnerabilityAnalyticsError] = useState('');
+  const [isVulnerabilityAnalyticsLoading, setIsVulnerabilityAnalyticsLoading] = useState(false);
 
   const agentNames = useMemo(
     () => [...new Set(interactions.map(({ agent_name: agentName }) => agentName).filter(Boolean))]
@@ -247,8 +257,8 @@ function App() {
       const query = new URLSearchParams();
       if (demandDriverAnalyticsStartDate) query.set('start_date', demandDriverAnalyticsStartDate);
       if (demandDriverAnalyticsEndDate) query.set('end_date', demandDriverAnalyticsEndDate);
-      if (selectedDemandDriverContactReasons.length) {
-        query.set('contact_reasons', selectedDemandDriverContactReasons.join(','));
+      if (selectedDemandDriverCategories.length) {
+        query.set('categories', selectedDemandDriverCategories.join(','));
       }
       const separator = demandDriverAnalyticsUrl.includes('?') ? '&' : '?';
       const token = await acquirePersistenceToken();
@@ -261,13 +271,13 @@ function App() {
       }
 
       const payload = JSON.parse(rawText);
-      if (!Array.isArray(payload.items) || !Array.isArray(payload.available_reasons)
+      if (!Array.isArray(payload.items) || !Array.isArray(payload.available_categories)
         || !Number.isInteger(payload.total_count)) {
         throw new Error('The persistence API returned an invalid demand driver analytics response.');
       }
       setDemandDriverAnalytics(payload.items);
       setDemandDriverAnalyticsTotal(payload.total_count);
-      setAvailableDemandDriverReasons(payload.available_reasons);
+      setAvailableDemandDriverCategories(payload.available_categories);
     } catch (fetchError) {
       setDemandDriverAnalyticsError(fetchError.message || 'Unable to retrieve demand driver analytics.');
     } finally {
@@ -280,6 +290,61 @@ function App() {
     if (authAccount) loadDemandDriverAnalytics();
   };
 
+  const loadVulnerabilityAnalytics = async (isAuthenticated = Boolean(authAccount)) => {
+    if (!isAuthenticated) {
+      setVulnerabilityAnalyticsError(
+        isEntraConfigured
+          ? 'Sign in with your work account to view vulnerability indicator analytics.'
+          : `Configure ${entraConfigurationKeys.join(', ')} to enable Microsoft sign-in.`,
+      );
+      return;
+    }
+
+    setIsVulnerabilityAnalyticsLoading(true);
+    setVulnerabilityAnalyticsError('');
+    setVulnerabilityAnalytics([]);
+    setVulnerabilityAnalyticsTotal(0);
+    try {
+      const query = new URLSearchParams();
+      if (vulnerabilityAnalyticsStartDate) query.set('start_date', vulnerabilityAnalyticsStartDate);
+      if (vulnerabilityAnalyticsEndDate) query.set('end_date', vulnerabilityAnalyticsEndDate);
+      if (selectedVulnerabilityCategories.length) {
+        query.set('categories', selectedVulnerabilityCategories.join(','));
+      }
+      const separator = vulnerabilityAnalyticsUrl.includes('?') ? '&' : '?';
+      const token = await acquirePersistenceToken();
+      const response = await fetch(`${vulnerabilityAnalyticsUrl}${separator}${query.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error(rawText || `Vulnerability analytics request failed with status ${response.status}.`);
+      }
+
+      const payload = JSON.parse(rawText);
+      if (!Array.isArray(payload.items) || !Array.isArray(payload.available_categories)
+        || !Number.isInteger(payload.total_count)) {
+        throw new Error(
+          'The vulnerability analytics endpoint has an outdated or invalid response. '
+          + 'Expected items, available_categories, and integer total_count; deploy the updated '
+          + 'Persistence API and verify the configured endpoint.',
+        );
+      }
+      setVulnerabilityAnalytics(payload.items);
+      setVulnerabilityAnalyticsTotal(payload.total_count);
+      setAvailableVulnerabilityCategories(payload.available_categories);
+    } catch (fetchError) {
+      setVulnerabilityAnalyticsError(fetchError.message || 'Unable to retrieve vulnerability analytics.');
+    } finally {
+      setIsVulnerabilityAnalyticsLoading(false);
+    }
+  };
+
+  const openVulnerabilityAnalytics = () => {
+    setPage('vulnerability-analytics');
+    if (authAccount) loadVulnerabilityAnalytics();
+  };
+
   const handleSignIn = async () => {
     setIsAuthBusy(true);
     setAuthError('');
@@ -289,6 +354,7 @@ function App() {
       if (page === 'interactions') await loadInteractions(0, false, true);
       if (page === 'pcr-analytics') await loadPcrAnalytics(true);
       if (page === 'demand-driver-analytics') await loadDemandDriverAnalytics(true);
+      if (page === 'vulnerability-analytics') await loadVulnerabilityAnalytics(true);
     } catch (signInError) {
       setAuthError(signInError.message || 'Unable to sign in with Microsoft.');
     } finally {
@@ -308,7 +374,9 @@ function App() {
       setAnalyticsTotal(0);
       setDemandDriverAnalytics([]);
       setDemandDriverAnalyticsTotal(0);
-      setAvailableDemandDriverReasons([]);
+      setAvailableDemandDriverCategories([]);
+      setVulnerabilityAnalytics([]);
+      setVulnerabilityAnalyticsTotal(0);
     } catch (signOutError) {
       setAuthError(signOutError.message || 'Unable to sign out.');
     } finally {
@@ -369,7 +437,7 @@ function App() {
     }
   };
 
-  const isAgentInteractionPage = ['interactions', 'pcr-analytics', 'demand-driver-analytics'].includes(page);
+  const isAgentInteractionPage = ['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page);
 
   return (
     <div className="app-shell">
@@ -397,8 +465,8 @@ function App() {
           </button>
           <button
             type="button"
-            className={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' ? 'page-navigation__active' : ''}
-            aria-current={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' ? 'page' : undefined}
+            className={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' || page === 'vulnerability-analytics' ? 'page-navigation__active' : ''}
+            aria-current={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' || page === 'vulnerability-analytics' ? 'page' : undefined}
             onClick={openInteractions}
           >
           Agent Interaction
@@ -438,12 +506,16 @@ function App() {
               Demand driver analytics endpoint
               <input value={demandDriverAnalyticsUrl} onChange={(event) => setDemandDriverAnalyticsUrl(event.target.value)} />
             </label>
+            <label>
+              Vulnerability analytics endpoint
+              <input value={vulnerabilityAnalyticsUrl} onChange={(event) => setVulnerabilityAnalyticsUrl(event.target.value)} />
+            </label>
           </div>
         </details>
       </header>
 
       <main className={`main-panel${isAgentInteractionPage ? ' main-panel--wide' : ''}`}>
-        {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
+        {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
           <section className="page-content">
             <div className="page-heading">
@@ -513,6 +585,7 @@ function App() {
               onInteractions={openInteractions}
               onAnalytics={openPcrAnalytics}
               onDemandDriverAnalytics={openDemandDriverAnalytics}
+              onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
             <div className="page-heading page-heading--row interaction-heading interaction-heading--history">
               <div>
@@ -646,6 +719,7 @@ function App() {
               onInteractions={openInteractions}
               onAnalytics={openPcrAnalytics}
               onDemandDriverAnalytics={openDemandDriverAnalytics}
+              onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
             <div className="page-heading page-heading--row interaction-heading">
               <div>
@@ -773,6 +847,7 @@ function App() {
               onInteractions={openInteractions}
               onAnalytics={openPcrAnalytics}
               onDemandDriverAnalytics={openDemandDriverAnalytics}
+              onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
             <div className="page-heading page-heading--row interaction-heading">
               <div>
@@ -836,21 +911,21 @@ function App() {
                 />
               </label>
               <label className="analytics-reasons">
-                Contact reasons
+                Demand Driver Categories
                 <select
                   multiple
                   size={5}
-                  value={selectedDemandDriverContactReasons}
-                  onChange={(event) => setSelectedDemandDriverContactReasons(
+                  value={selectedDemandDriverCategories}
+                  onChange={(event) => setSelectedDemandDriverCategories(
                     [...event.target.selectedOptions].map((option) => option.value),
                   )}
                   disabled={!authAccount}
                 >
-                  {availableDemandDriverReasons.map((reason) => (
-                    <option key={reason} value={reason}>{reason}</option>
+                  {availableDemandDriverCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
                   ))}
                 </select>
-                <span className="filter-hint">Use Ctrl or Command to select multiple reasons.</span>
+                <span className="filter-hint">Use Ctrl or Command to select multiple categories.</span>
               </label>
               <button type="submit" disabled={!authAccount || isDemandDriverAnalyticsLoading}>
                 {isDemandDriverAnalyticsLoading ? 'Applying…' : 'Apply filters'}
@@ -894,12 +969,147 @@ function App() {
             )}
           </section>
         )}
+        {page === 'vulnerability-analytics' && (
+          <section className="page-content interaction-page">
+            <AgentInteractionNavigation
+              page={page}
+              onInteractions={openInteractions}
+              onAnalytics={openPcrAnalytics}
+              onDemandDriverAnalytics={openDemandDriverAnalytics}
+              onVulnerabilityAnalytics={openVulnerabilityAnalytics}
+            />
+            <div className="page-heading page-heading--row interaction-heading">
+              <div>
+                <p className="eyebrow">Agent Interaction</p>
+                <h1>Vulnerability Indicator Analytics</h1>
+                <p>Explore completed interaction counts by vulnerability indicator category.</p>
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => loadVulnerabilityAnalytics()}
+                disabled={isVulnerabilityAnalyticsLoading || !authAccount}
+              >
+                {isVulnerabilityAnalyticsLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+            {vulnerabilityAnalyticsError && <p className="error-message" role="alert">{vulnerabilityAnalyticsError}</p>}
+            {authError && <p className="error-message" role="alert">{authError}</p>}
+            {!isEntraConfigured && (
+              <div className="auth-notice">
+                <h2>Microsoft sign-in needs configuration</h2>
+                <p>
+                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
+                </p>
+              </div>
+            )}
+            {isEntraConfigured && !authAccount && (
+              <div className="auth-notice">
+                <h2>Sign in to view vulnerability indicator analytics</h2>
+                <p>Use your work account to securely access the Persistence API.</p>
+                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
+                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
+                </button>
+              </div>
+            )}
+            <form
+              className="analytics-filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                loadVulnerabilityAnalytics();
+              }}
+            >
+              <label>
+                Start date
+                <input
+                  type="date"
+                  value={vulnerabilityAnalyticsStartDate}
+                  max={vulnerabilityAnalyticsEndDate || undefined}
+                  onChange={(event) => setVulnerabilityAnalyticsStartDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  type="date"
+                  value={vulnerabilityAnalyticsEndDate}
+                  min={vulnerabilityAnalyticsStartDate || undefined}
+                  onChange={(event) => setVulnerabilityAnalyticsEndDate(event.target.value)}
+                  disabled={!authAccount}
+                />
+              </label>
+              <label className="analytics-reasons">
+                Vulnerability indicator categories
+                <select
+                  multiple
+                  size={5}
+                  value={selectedVulnerabilityCategories}
+                  onChange={(event) => setSelectedVulnerabilityCategories(
+                    [...event.target.selectedOptions].map((option) => option.value),
+                  )}
+                  disabled={!authAccount}
+                >
+                  {availableVulnerabilityCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+                <span className="filter-hint">Use Ctrl or Command to select multiple categories.</span>
+              </label>
+              <button type="submit" disabled={!authAccount || isVulnerabilityAnalyticsLoading}>
+                {isVulnerabilityAnalyticsLoading ? 'Applying…' : 'Apply filters'}
+              </button>
+            </form>
+            {!authAccount ? null : isVulnerabilityAnalyticsLoading && vulnerabilityAnalytics.length === 0 ? (
+              <p className="empty-state">Loading vulnerability indicator analytics…</p>
+            ) : vulnerabilityAnalytics.length === 0 ? (
+              <p className="empty-state">
+                {vulnerabilityAnalyticsError
+                  ? 'Vulnerability indicator analytics could not be loaded.'
+                  : 'No vulnerability indicator results found for these filters.'}
+              </p>
+            ) : (
+              <section className="analytics-chart" aria-label="Vulnerability indicator category counts">
+                <div className="analytics-chart__heading">
+                  <h2>Indicators by vulnerability category</h2>
+                  <span>{vulnerabilityAnalyticsTotal} indicators</span>
+                </div>
+                <div className="analytics-bars">
+                  {vulnerabilityAnalytics.map((item) => (
+                    <div className="analytics-bar" key={item.reason}>
+                      <div className="analytics-bar__label">
+                        <span>{item.reason}</span>
+                        <strong>{item.count}</strong>
+                      </div>
+                      <div
+                        className="analytics-bar__track"
+                        role="progressbar"
+                        aria-label={`${item.reason}: ${item.count} indicators`}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow={item.percentage}
+                      >
+                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );
 }
 
-function AgentInteractionNavigation({ page, onInteractions, onAnalytics, onDemandDriverAnalytics }) {
+function AgentInteractionNavigation({
+  page,
+  onInteractions,
+  onAnalytics,
+  onDemandDriverAnalytics,
+  onVulnerabilityAnalytics,
+}) {
   return (
     <nav className="interaction-section-navigation" aria-label="Agent Interaction">
       <button
@@ -925,6 +1135,14 @@ function AgentInteractionNavigation({ page, onInteractions, onAnalytics, onDeman
         onClick={onDemandDriverAnalytics}
       >
         Demand Driver Analytics
+      </button>
+      <button
+        type="button"
+        className={page === 'vulnerability-analytics' ? 'interaction-section-navigation__active' : ''}
+        aria-current={page === 'vulnerability-analytics' ? 'page' : undefined}
+        onClick={onVulnerabilityAnalytics}
+      >
+        Vulnerability Indicator Analytics
       </button>
     </nav>
   );

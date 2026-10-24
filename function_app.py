@@ -9,7 +9,7 @@ from typing import Any, get_args
 import azure.functions as func
 from pydantic import ValidationError
 
-from hosted_agent.schemas import ContactReason
+from hosted_agent.schemas import ContactReason, DemandDriver, VulnerabilityCategory
 from persistence_api.auth import AuthenticationError, EntraTokenValidator
 from persistence_api.config import ApiSettings, get_settings
 from persistence_api.database import get_engine
@@ -237,21 +237,86 @@ def get_demand_driver_analytics(req: func.HttpRequest) -> func.HttpResponse:
     if start_date is not None and end_date is not None and start_date > end_date:
         return _error("invalid_date_range", "start_date must not be after end_date.", 400)
 
-    contact_reasons = [
-        reason.strip()
-        for reason in req.params.get("contact_reasons", "").split(",")
-        if reason.strip()
+    categories = [
+        category.strip()
+        for category in req.params.get("categories", "").split(",")
+        if category.strip()
     ]
-    valid_reasons = {*get_args(ContactReason), "Not identified"}
-    if any(reason not in valid_reasons for reason in contact_reasons):
-        return _error("invalid_contact_reason", "One or more contact reasons are invalid.", 400)
-    contact_reasons = list(dict.fromkeys(contact_reasons))
+    valid_categories = set(get_args(DemandDriver))
+    if any(category not in valid_categories for category in categories):
+        return _error(
+            "invalid_demand_driver_category",
+            "One or more demand driver categories are invalid.",
+            400,
+        )
+    categories = list(dict.fromkeys(categories))
 
     try:
         result = _persistence_service().demand_driver_analytics(
             start_date=start_date,
             end_date=end_date,
-            contact_reasons=contact_reasons,
+            categories=categories,
+        )
+    except DatabaseUnavailable:
+        return _error(
+            "database_unavailable", "Persistence service is temporarily unavailable.", 503
+        )
+    except PersistenceFailure:
+        return _error("persistence_failed", "The database query did not complete.", 500)
+
+    return _json_response(result.model_dump(mode="json"), 200)
+
+
+@app.route(route="vulnerability-analytics", methods=["GET"])
+def get_vulnerability_analytics(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        get_settings()
+    except (ValueError, OSError):
+        logger.exception(
+            "Persistence API configuration failed", extra={"error_code": "config_error"}
+        )
+        return _error("configuration_error", "Persistence API is not configured.", 500)
+
+    try:
+        _token_validator().validate(req.headers.get("Authorization"))
+    except AuthenticationError as exc:
+        logger.warning(
+            "Persistence API rejected caller",
+            extra={"error_code": exc.code, "status_code": exc.status_code},
+        )
+        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+
+    try:
+        start_date = (
+            date.fromisoformat(req.params["start_date"]) if req.params.get("start_date") else None
+        )
+        end_date = (
+            date.fromisoformat(req.params["end_date"]) if req.params.get("end_date") else None
+        )
+    except ValueError:
+        return _error("invalid_date_range", "Dates must use the YYYY-MM-DD format.", 400)
+    if start_date is not None and end_date is not None and start_date > end_date:
+        return _error("invalid_date_range", "start_date must not be after end_date.", 400)
+
+    categories = [
+        category.strip()
+        for category in req.params.get("categories", "").split(",")
+        if category.strip()
+    ]
+    valid_categories = set(get_args(VulnerabilityCategory))
+    if any(category not in valid_categories for category in categories):
+        return _error(
+            "invalid_vulnerability_category",
+            "One or more vulnerability indicator categories are invalid.",
+            400,
+        )
+    categories = list(dict.fromkeys(categories))
+
+    try:
+        result = _persistence_service().vulnerability_analytics(
+            start_date=start_date,
+            end_date=end_date,
+            categories=categories,
         )
     except DatabaseUnavailable:
         return _error(
