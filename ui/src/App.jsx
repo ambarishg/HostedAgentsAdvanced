@@ -7,6 +7,11 @@ import {
   signInToEntra,
   signOutOfEntra,
 } from './auth';
+import { AnalyticsPage } from './components/AnalyticsPage';
+import { AppHeader } from './components/AppHeader';
+import { AuthenticationGate } from './components/AuthenticationGate';
+import { BatchPage, HomePage } from './components/WorkspacePages';
+import { AgentInteractionNavigation, CopyButton, InteractionResult } from './components/InteractionDetails';
 
 const defaultAgentUrl = import.meta.env.VITE_HOSTED_AGENT_URL || '/invocations';
 const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/agent-interactions';
@@ -416,7 +421,7 @@ function App() {
     const requestId = crypto.randomUUID();
     setStatus('loading');
     setIsLoading(true);
-    setMessage(batchMode ? 'Processing the configured batch input…' : 'Sending your request to the agent…');
+    setMessage(batchMode ? 'Processing the configured batch inputâ€¦' : 'Sending your request to the agentâ€¦');
     setError('');
     setResult(null);
 
@@ -465,235 +470,72 @@ function App() {
     setIsMobileNavigationOpen(false);
   };
 
-  if (!isEntraConfigured) {
+  if (!isEntraConfigured || !authReady || !authAccount) {
     return (
-      <main className="authentication-gate" aria-labelledby="authentication-gate-title">
-        <section className="authentication-gate__card">
-          <p className="authentication-gate__eyebrow">Authentication required</p>
-          <h1 id="authentication-gate-title">Entra ID sign-in is not configured</h1>
-          <p>
-            Configure {entraConfigurationKeys.join(', ')} before users can access this
-            application.
-          </p>
-        </section>
-      </main>
-    );
-  }
-
-  if (!authReady) {
-    return (
-      <main className="authentication-gate" aria-live="polite">
-        <section className="authentication-gate__card">
-          <p className="authentication-gate__eyebrow">Authentication required</p>
-          <h1>Checking your Microsoft sign-in</h1>
-        </section>
-      </main>
-    );
-  }
-
-  if (!authAccount) {
-    return (
-      <main className="authentication-gate" aria-labelledby="authentication-gate-title">
-        <section className="authentication-gate__card">
-          <p className="authentication-gate__eyebrow">Authentication required</p>
-          <h1 id="authentication-gate-title">Sign in to access Voice Analytics</h1>
-          <p>Use your work account to access this application.</p>
-          {signOutMessage && <p className="sign-out-message" role="status">{signOutMessage}</p>}
-          {authError && <p className="error-message" role="alert">{authError}</p>}
-          <button
-            type="button"
-            className="auth-button"
-            onClick={handleSignIn}
-            disabled={isAuthBusy}
-          >
-            {isAuthBusy ? 'Signing in...' : 'Sign in with Microsoft'}
-          </button>
-        </section>
-      </main>
+      <AuthenticationGate
+        authError={authError}
+        authReady={authReady}
+        isAuthBusy={isAuthBusy}
+        isConfigured={isEntraConfigured}
+        missingConfigurationKeys={entraConfigurationKeys}
+        onSignIn={handleSignIn}
+        signOutMessage={signOutMessage}
+      />
     );
   }
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <a className="brand" href="#home" onClick={() => navigateTo('home')}>
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
-          <span className="brand-name">Voice Analytics
-            <span></span></span>
-        </a>
-        <button
-          type="button"
-          className="mobile-navigation-toggle"
-          aria-label={isMobileNavigationOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          aria-expanded={isMobileNavigationOpen}
-          aria-controls="primary-navigation"
-          onClick={() => setIsMobileNavigationOpen((open) => !open)}
-        >
-          <span aria-hidden="true">{isMobileNavigationOpen ? '×' : '☰'}</span>
-        </button>
-        <nav
-          id="primary-navigation"
-          className={`page-navigation${isMobileNavigationOpen ? ' page-navigation--open' : ''}`}
-          aria-label="Main navigation"
-        >
-          <button
-            type="button"
-            className={page === 'home' ? 'page-navigation__active' : ''}
-            aria-current={page === 'home' ? 'page' : undefined}
-            onClick={() => navigateTo('home')}
-          >
-            Home
-          </button>
-          <button
-            type="button"
-            className={page === 'batch' ? 'page-navigation__active' : ''}
-            aria-current={page === 'batch' ? 'page' : undefined}
-            onClick={() => navigateTo('batch')}
-          >
-            Batch Processing
-          </button>
-          <button
-            type="button"
-            className={isInteractionNavigationActive ? 'page-navigation__active' : ''}
-            aria-current={isInteractionNavigationActive ? 'page' : undefined}
-            onClick={openInteractions}
-          >
-            Agent Interactions
-          </button>
-        </nav>
-        <div className="auth-controls">
-          <span className="signed-in-user">{authAccount.name || authAccount.username}</span>
-          <button
-            type="button"
-            className="auth-button auth-button--quiet"
-            onClick={handleSignOut}
-            disabled={isAuthBusy}
-          >
-            {isAuthBusy ? 'Please wait…' : 'Sign out'}
-          </button>
-        </div>
-        <details className="settings">
-          <summary>Settings</summary>
-          <div className="settings-panel">
-            <div className="settings-panel__heading">
-              <h2>Connection settings</h2>
-              <p>Configure the service endpoints used by this workspace.</p>
-            </div>
-            <label>
-              Agent endpoint
-              <input value={agentUrl} onChange={(event) => setAgentUrl(event.target.value)} />
-            </label>
-            <label>
-              Interaction history endpoint
-              <input value={historyUrl} onChange={(event) => setHistoryUrl(event.target.value)} />
-            </label>
-            <label>
-              PCR analytics endpoint
-              <input value={analyticsUrl} onChange={(event) => setAnalyticsUrl(event.target.value)} />
-            </label>
-            <label>
-              Demand driver analytics endpoint
-              <input value={demandDriverAnalyticsUrl} onChange={(event) => setDemandDriverAnalyticsUrl(event.target.value)} />
-            </label>
-            <label>
-              Vulnerability analytics endpoint
-              <input value={vulnerabilityAnalyticsUrl} onChange={(event) => setVulnerabilityAnalyticsUrl(event.target.value)} />
-            </label>
-          </div>
-        </details>
-      </header>
+      <AppHeader
+        account={authAccount}
+        agentUrl={agentUrl}
+        analyticsUrl={analyticsUrl}
+        demandDriverAnalyticsUrl={demandDriverAnalyticsUrl}
+        historyUrl={historyUrl}
+        isInteractionPage={isInteractionNavigationActive}
+        isMobileNavigationOpen={isMobileNavigationOpen}
+        isSigningOut={isAuthBusy}
+        onNavigate={navigateTo}
+        onOpenInteractions={openInteractions}
+        onSignOut={handleSignOut}
+        page={page}
+        setAgentUrl={setAgentUrl}
+        setAnalyticsUrl={setAnalyticsUrl}
+        setDemandDriverAnalyticsUrl={setDemandDriverAnalyticsUrl}
+        setHistoryUrl={setHistoryUrl}
+        setIsMobileNavigationOpen={setIsMobileNavigationOpen}
+        setVulnerabilityAnalyticsUrl={setVulnerabilityAnalyticsUrl}
+        vulnerabilityAnalyticsUrl={vulnerabilityAnalyticsUrl}
+      />
 
       <main className={`main-panel${isAgentInteractionPage ? ' main-panel--wide' : ''}`}>
         {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
-          <section className="page-content home-page">
-            <div className="home-workspace">
-              <div className="request-workspace">
-                <div className="section-heading">
-                  <div>
-                    <p className="eyebrow">DIRECT REQUEST</p>
-                  </div>
-                </div>
-                <form className="request-form" onSubmit={handleSubmit}>
-                  <label htmlFor="user-input">Your request</label>
-                  <textarea
-                    id="user-input"
-                    value={userInput}
-                    onChange={(event) => setUserInput(event.target.value)}
-                    rows={6}
-                    placeholder="Describe the customer interaction, question, or outcome you need to review…"
-                  />
-                  <div className="form-footer">
-                    <span>Include the relevant context for the most useful result.</span>
-                    <button type="submit" disabled={isLoading}>
-                      {isLoading ? 'Working…' : 'Submit request'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              <ResponsePanel
-                status={lastRunMode === 'request' ? status : 'idle'}
-                message={lastRunMode === 'request' ? message : 'Your agent is ready when you are.'}
-                error={lastRunMode === 'request' ? error : ''}
-                result={lastRunMode === 'request' ? result : null}
-              />
-            </div>
-
-            <div className="workspace-shortcuts" aria-label="Additional workspace options">
-              <button type="button" className="shortcut-card" onClick={() => navigateTo('batch')}>
-                <span className="shortcut-card__icon" aria-hidden="true">↗</span>
-                <span><strong>Batch processing</strong><small>Run a configured workload</small></span>
-                <span className="shortcut-card__arrow" aria-hidden="true">→</span>
-              </button>
-              <button type="button" className="shortcut-card" onClick={openInteractions}>
-                <span className="shortcut-card__icon shortcut-card__icon--blue" aria-hidden="true">≡</span>
-                <span><strong>Agent interactions</strong><small>Review previous requests and results</small></span>
-                <span className="shortcut-card__arrow" aria-hidden="true">→</span>
-              </button>
-            </div>
-          </section>
+          <HomePage
+            error={error}
+            isLoading={isLoading}
+            lastRunMode={lastRunMode}
+            message={message}
+            onNavigate={navigateTo}
+            onOpenInteractions={openInteractions}
+            onSubmit={handleSubmit}
+            result={result}
+            setUserInput={setUserInput}
+            status={status}
+            userInput={userInput}
+          />
         )}
 
         {page === 'batch' && (
-          <section className="page-content">
-            <div className="page-heading">
-              <p className="eyebrow">BATCH PROCESSING</p>
-              <h1>Batch Processing</h1>
-              <p>Run and monitor configured batch workloads for your hosted agents.</p>
-            </div>
-            <form className="batch-card" onSubmit={(event) => handleSubmit(event, true)}>
-              <div className="batch-card__content">
-                <div className="batch-description">
-                  <span className="batch-icon" aria-hidden="true">↗</span>
-                  <div>
-                    <span className="meta-label">CONFIGURED WORKLOAD</span>
-                    <h2>Configured Batch</h2>
-                    <p>The hosted agent will read and process its configured input source.</p>
-                  </div>
-                </div>
-                <div className="batch-source">
-                  <span className="batch-source__icon" aria-hidden="true">▤</span>
-                  <span><strong>Input source</strong><small>Source details are not exposed by the current agent configuration.</small></span>
-                </div>
-              </div>
-              <button type="submit" disabled={isLoading}>
-                {isLoading ? 'Submitting batch…' : 'Start batch'}
-              </button>
-            </form>
-            <p className="batch-note">Starting a batch runs the input currently configured for the hosted agent. No input source details are available in this workspace.</p>
-            <ResponsePanel
-              status={lastRunMode === 'batch' ? status : 'idle'}
-              message={lastRunMode === 'batch' ? message : 'No batch has been submitted in this session.'}
-              error={lastRunMode === 'batch' ? error : ''}
-              result={lastRunMode === 'batch' ? result : null}
-              mode="batch"
-            />
-          </section>
+          <BatchPage
+            error={error}
+            isLoading={isLoading}
+            lastRunMode={lastRunMode}
+            message={message}
+            onSubmit={(event) => handleSubmit(event, true)}
+            result={result}
+            status={status}
+          />
         )}
 
         {page === 'interactions' && (
@@ -716,7 +558,7 @@ function App() {
                   <strong>{visibleInteractions.length}</strong>
                   <span>matching</span>
                   <span className="interaction-summary__total">
-                    {interactions.length} loaded{hasMoreInteractions ? ' · more available' : ''}
+                    {interactions.length} loaded{hasMoreInteractions ? ' Â· more available' : ''}
                   </span>
                 </div>
                 <button
@@ -725,8 +567,8 @@ function App() {
                   onClick={() => loadInteractions()}
                   disabled={isHistoryLoading || !authAccount}
                 >
-                  <span aria-hidden="true">↻</span>
-                  {isHistoryLoading ? 'Refreshing…' : 'Refresh'}
+                  <span aria-hidden="true">â†»</span>
+                  {isHistoryLoading ? 'Refreshingâ€¦' : 'Refresh'}
                 </button>
               </div>
             </div>
@@ -749,7 +591,7 @@ function App() {
                 <h2>Sign in to view agent interactions</h2>
                 <p>Use your work account to securely access the Persistence API.</p>
                 <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
-                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
+                  {!authReady || isAuthBusy ? 'Please waitâ€¦' : 'Sign in with Microsoft'}
                 </button>
               </div>
             )}
@@ -778,8 +620,8 @@ function App() {
                 <select value={interactionSort} onChange={(event) => setInteractionSort(event.target.value)} disabled={!authAccount}>
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
-                  <option value="agent-asc">Agent name (A–Z)</option>
-                  <option value="agent-desc">Agent name (Z–A)</option>
+                  <option value="agent-asc">Agent name (Aâ€“Z)</option>
+                  <option value="agent-desc">Agent name (Zâ€“A)</option>
                 </select>
               </label>
               {(interactionSearch || agentFilter || interactionSort !== 'newest') && (
@@ -797,7 +639,7 @@ function App() {
               )}
             </div>
             {authAccount && isHistoryLoading && interactions.length === 0 ? (
-              <p className="empty-state">Loading interactions…</p>
+              <p className="empty-state">Loading interactionsâ€¦</p>
             ) : authAccount && interactions.length === 0 ? (
               <p className="empty-state">
                 {historyError ? 'Interaction history could not be loaded.' : 'No interactions found yet.'}
@@ -859,13 +701,22 @@ function App() {
                 onClick={() => loadInteractions(interactions.length, true)}
                 disabled={isHistoryLoading}
               >
-                {isHistoryLoading ? 'Loading…' : 'Load more'}
+                {isHistoryLoading ? 'Loadingâ€¦' : 'Load more'}
               </button>
             )}
           </section>
         )}
         {page === 'pcr-analytics' && (
-          <section className="page-content interaction-page">
+          <AnalyticsPage
+            availableCategories={availableContactReasons}
+            categoryLabel="Contact reasons"
+            emptyMessage="No PCR results found for these filters."
+            endDate={analyticsEndDate}
+            error={analyticsError}
+            isLoading={isAnalyticsLoading}
+            items={analytics}
+            metricLabel="Interactions by primary contact reason"
+            navigation={(
             <AgentInteractionNavigation
               page={page}
               onInteractions={openInteractions}
@@ -873,127 +724,32 @@ function App() {
               onDemandDriverAnalytics={openDemandDriverAnalytics}
               onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
-            <div className="page-heading page-heading--row interaction-heading">
-              <div>
-                <p className="eyebrow">Agent Interaction</p>
-                <h1>Primary Contact Reason Analytics</h1>
-                <p>Explore completed interaction counts by primary contact reason.</p>
-              </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => loadPcrAnalytics()}
-                disabled={isAnalyticsLoading || !authAccount}
-              >
-                {isAnalyticsLoading ? 'Loading…' : 'Refresh'}
-              </button>
-            </div>
-            {analyticsError && <p className="error-message" role="alert">{analyticsError}</p>}
-            {authError && <p className="error-message" role="alert">{authError}</p>}
-            {!isEntraConfigured && (
-              <div className="auth-notice">
-                <h2>Microsoft sign-in needs configuration</h2>
-                <p>
-                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
-                </p>
-              </div>
             )}
-            {isEntraConfigured && !authAccount && (
-              <div className="auth-notice">
-                <h2>Sign in to view PCR analytics</h2>
-                <p>Use your work account to securely access the Persistence API.</p>
-                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
-                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
-                </button>
-              </div>
-            )}
-            <form
-              className="analytics-filters"
-              onSubmit={(event) => {
-                event.preventDefault();
-                loadPcrAnalytics();
-              }}
-            >
-              <label>
-                Start date
-                <input
-                  type="date"
-                  value={analyticsStartDate}
-                  max={analyticsEndDate || undefined}
-                  onChange={(event) => setAnalyticsStartDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={analyticsEndDate}
-                  min={analyticsStartDate || undefined}
-                  onChange={(event) => setAnalyticsEndDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label className="analytics-reasons">
-                Contact reasons
-                <select
-                  multiple
-                  size={5}
-                  value={selectedContactReasons}
-                  onChange={(event) => setSelectedContactReasons(
-                    [...event.target.selectedOptions].map((option) => option.value),
-                  )}
-                  disabled={!authAccount}
-                >
-                  {availableContactReasons.map((reason) => (
-                    <option key={reason} value={reason}>{reason}</option>
-                  ))}
-                </select>
-                <span className="filter-hint">Use Ctrl or Command to select multiple reasons.</span>
-              </label>
-              <button type="submit" disabled={!authAccount || isAnalyticsLoading}>
-                {isAnalyticsLoading ? 'Applying…' : 'Apply filters'}
-              </button>
-            </form>
-            {!authAccount ? null : isAnalyticsLoading && analytics.length === 0 ? (
-              <p className="empty-state">Loading PCR analytics…</p>
-            ) : analytics.length === 0 ? (
-              <p className="empty-state">
-                {analyticsError ? 'PCR analytics could not be loaded.' : 'No PCR results found for these filters.'}
-              </p>
-            ) : (
-              <section className="analytics-chart" aria-label="Primary Contact Reason counts">
-                <div className="analytics-chart__heading">
-                  <h2>Interactions by primary contact reason</h2>
-                  <span>{analyticsTotal} interactions</span>
-                </div>
-                <div className="analytics-bars">
-                  {analytics.map((item) => (
-                    <div className="analytics-bar" key={item.reason}>
-                      <div className="analytics-bar__label">
-                        <span>{item.reason}</span>
-                        <strong>{item.count}</strong>
-                      </div>
-                      <div
-                        className="analytics-bar__track"
-                        role="progressbar"
-                        aria-label={`${item.reason}: ${item.count} interactions`}
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        aria-valuenow={item.percentage}
-                      >
-                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </section>
+            onApplyFilters={(event) => { event.preventDefault(); loadPcrAnalytics(); }}
+            onChangeCategories={(event) => setSelectedContactReasons([...event.target.selectedOptions].map((option) => option.value))}
+            onChangeEndDate={(event) => setAnalyticsEndDate(event.target.value)}
+            onChangeStartDate={(event) => setAnalyticsStartDate(event.target.value)}
+            onRefresh={() => loadPcrAnalytics()}
+            selectedCategories={selectedContactReasons}
+            startDate={analyticsStartDate}
+            subtitle="Explore completed interaction counts by primary contact reason."
+            title="Primary Contact Reason Analytics"
+            total={analyticsTotal}
+            totalLabel="interactions"
+          />
         )}
 
         {page === 'demand-driver-analytics' && (
-          <section className="page-content interaction-page">
+          <AnalyticsPage
+            availableCategories={availableDemandDriverCategories}
+            categoryLabel="Demand Driver Categories"
+            emptyMessage="No demand driver results found for these filters."
+            endDate={demandDriverAnalyticsEndDate}
+            error={demandDriverAnalyticsError}
+            isLoading={isDemandDriverAnalyticsLoading}
+            items={demandDriverAnalytics}
+            metricLabel="Interactions by demand driver"
+            navigation={(
             <AgentInteractionNavigation
               page={page}
               onInteractions={openInteractions}
@@ -1001,128 +757,32 @@ function App() {
               onDemandDriverAnalytics={openDemandDriverAnalytics}
               onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
-            <div className="page-heading page-heading--row interaction-heading">
-              <div>
-                <p className="eyebrow">Agent Interaction</p>
-                <h1>Demand Driver Analytics</h1>
-                <p>Explore completed interaction counts by demand driver.</p>
-              </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => loadDemandDriverAnalytics()}
-                disabled={isDemandDriverAnalyticsLoading || !authAccount}
-              >
-                {isDemandDriverAnalyticsLoading ? 'Loading…' : 'Refresh'}
-              </button>
-            </div>
-            {demandDriverAnalyticsError && <p className="error-message" role="alert">{demandDriverAnalyticsError}</p>}
-            {authError && <p className="error-message" role="alert">{authError}</p>}
-            {!isEntraConfigured && (
-              <div className="auth-notice">
-                <h2>Microsoft sign-in needs configuration</h2>
-                <p>
-                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
-                </p>
-              </div>
             )}
-            {isEntraConfigured && !authAccount && (
-              <div className="auth-notice">
-                <h2>Sign in to view demand driver analytics</h2>
-                <p>Use your work account to securely access the Persistence API.</p>
-                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
-                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
-                </button>
-              </div>
-            )}
-            <form
-              className="analytics-filters"
-              onSubmit={(event) => {
-                event.preventDefault();
-                loadDemandDriverAnalytics();
-              }}
-            >
-              <label>
-                Start date
-                <input
-                  type="date"
-                  value={demandDriverAnalyticsStartDate}
-                  max={demandDriverAnalyticsEndDate || undefined}
-                  onChange={(event) => setDemandDriverAnalyticsStartDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={demandDriverAnalyticsEndDate}
-                  min={demandDriverAnalyticsStartDate || undefined}
-                  onChange={(event) => setDemandDriverAnalyticsEndDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label className="analytics-reasons">
-                Demand Driver Categories
-                <select
-                  multiple
-                  size={5}
-                  value={selectedDemandDriverCategories}
-                  onChange={(event) => setSelectedDemandDriverCategories(
-                    [...event.target.selectedOptions].map((option) => option.value),
-                  )}
-                  disabled={!authAccount}
-                >
-                  {availableDemandDriverCategories.map((category) => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-                <span className="filter-hint">Use Ctrl or Command to select multiple categories.</span>
-              </label>
-              <button type="submit" disabled={!authAccount || isDemandDriverAnalyticsLoading}>
-                {isDemandDriverAnalyticsLoading ? 'Applying…' : 'Apply filters'}
-              </button>
-            </form>
-            {!authAccount ? null : isDemandDriverAnalyticsLoading && demandDriverAnalytics.length === 0 ? (
-              <p className="empty-state">Loading demand driver analytics…</p>
-            ) : demandDriverAnalytics.length === 0 ? (
-              <p className="empty-state">
-                {demandDriverAnalyticsError
-                  ? 'Demand driver analytics could not be loaded.'
-                  : 'No demand driver results found for these filters.'}
-              </p>
-            ) : (
-              <section className="analytics-chart" aria-label="Demand driver counts">
-                <div className="analytics-chart__heading">
-                  <h2>Interactions by demand driver</h2>
-                  <span>{demandDriverAnalyticsTotal} interactions</span>
-                </div>
-                <div className="analytics-bars">
-                  {demandDriverAnalytics.map((item) => (
-                    <div className="analytics-bar" key={item.reason}>
-                      <div className="analytics-bar__label">
-                        <span>{item.reason}</span>
-                        <strong>{item.count}</strong>
-                      </div>
-                      <div
-                        className="analytics-bar__track"
-                        role="progressbar"
-                        aria-label={`${item.reason}: ${item.count} interactions`}
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        aria-valuenow={item.percentage}
-                      >
-                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </section>
+            onApplyFilters={(event) => { event.preventDefault(); loadDemandDriverAnalytics(); }}
+            onChangeCategories={(event) => setSelectedDemandDriverCategories([...event.target.selectedOptions].map((option) => option.value))}
+            onChangeEndDate={(event) => setDemandDriverAnalyticsEndDate(event.target.value)}
+            onChangeStartDate={(event) => setDemandDriverAnalyticsStartDate(event.target.value)}
+            onRefresh={() => loadDemandDriverAnalytics()}
+            selectedCategories={selectedDemandDriverCategories}
+            startDate={demandDriverAnalyticsStartDate}
+            subtitle="Explore completed interaction counts by demand driver."
+            title="Demand Driver Analytics"
+            total={demandDriverAnalyticsTotal}
+            totalLabel="interactions"
+          />
         )}
+
         {page === 'vulnerability-analytics' && (
-          <section className="page-content interaction-page">
+          <AnalyticsPage
+            availableCategories={availableVulnerabilityCategories}
+            categoryLabel="Vulnerability indicator categories"
+            emptyMessage="No vulnerability indicator results found for these filters."
+            endDate={vulnerabilityAnalyticsEndDate}
+            error={vulnerabilityAnalyticsError}
+            isLoading={isVulnerabilityAnalyticsLoading}
+            items={vulnerabilityAnalytics}
+            metricLabel="Indicators by vulnerability category"
+            navigation={(
             <AgentInteractionNavigation
               page={page}
               onInteractions={openInteractions}
@@ -1130,433 +790,22 @@ function App() {
               onDemandDriverAnalytics={openDemandDriverAnalytics}
               onVulnerabilityAnalytics={openVulnerabilityAnalytics}
             />
-            <div className="page-heading page-heading--row interaction-heading">
-              <div>
-                <p className="eyebrow">Agent Interaction</p>
-                <h1>Vulnerability Indicator Analytics</h1>
-                <p>Explore completed interaction counts by vulnerability indicator category.</p>
-              </div>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => loadVulnerabilityAnalytics()}
-                disabled={isVulnerabilityAnalyticsLoading || !authAccount}
-              >
-                {isVulnerabilityAnalyticsLoading ? 'Loading…' : 'Refresh'}
-              </button>
-            </div>
-            {vulnerabilityAnalyticsError && <p className="error-message" role="alert">{vulnerabilityAnalyticsError}</p>}
-            {authError && <p className="error-message" role="alert">{authError}</p>}
-            {!isEntraConfigured && (
-              <div className="auth-notice">
-                <h2>Microsoft sign-in needs configuration</h2>
-                <p>
-                  Set {entraConfigurationKeys.join(', ')} in <code>ui/.env.local</code>, then restart the UI.
-                </p>
-              </div>
             )}
-            {isEntraConfigured && !authAccount && (
-              <div className="auth-notice">
-                <h2>Sign in to view vulnerability indicator analytics</h2>
-                <p>Use your work account to securely access the Persistence API.</p>
-                <button type="button" className="auth-button" onClick={handleSignIn} disabled={!authReady || isAuthBusy}>
-                  {!authReady || isAuthBusy ? 'Please wait…' : 'Sign in with Microsoft'}
-                </button>
-              </div>
-            )}
-            <form
-              className="analytics-filters"
-              onSubmit={(event) => {
-                event.preventDefault();
-                loadVulnerabilityAnalytics();
-              }}
-            >
-              <label>
-                Start date
-                <input
-                  type="date"
-                  value={vulnerabilityAnalyticsStartDate}
-                  max={vulnerabilityAnalyticsEndDate || undefined}
-                  onChange={(event) => setVulnerabilityAnalyticsStartDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label>
-                End date
-                <input
-                  type="date"
-                  value={vulnerabilityAnalyticsEndDate}
-                  min={vulnerabilityAnalyticsStartDate || undefined}
-                  onChange={(event) => setVulnerabilityAnalyticsEndDate(event.target.value)}
-                  disabled={!authAccount}
-                />
-              </label>
-              <label className="analytics-reasons">
-                Vulnerability indicator categories
-                <select
-                  multiple
-                  size={5}
-                  value={selectedVulnerabilityCategories}
-                  onChange={(event) => setSelectedVulnerabilityCategories(
-                    [...event.target.selectedOptions].map((option) => option.value),
-                  )}
-                  disabled={!authAccount}
-                >
-                  {availableVulnerabilityCategories.map((category) => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-                <span className="filter-hint">Use Ctrl or Command to select multiple categories.</span>
-              </label>
-              <button type="submit" disabled={!authAccount || isVulnerabilityAnalyticsLoading}>
-                {isVulnerabilityAnalyticsLoading ? 'Applying…' : 'Apply filters'}
-              </button>
-            </form>
-            {!authAccount ? null : isVulnerabilityAnalyticsLoading && vulnerabilityAnalytics.length === 0 ? (
-              <p className="empty-state">Loading vulnerability indicator analytics…</p>
-            ) : vulnerabilityAnalytics.length === 0 ? (
-              <p className="empty-state">
-                {vulnerabilityAnalyticsError
-                  ? 'Vulnerability indicator analytics could not be loaded.'
-                  : 'No vulnerability indicator results found for these filters.'}
-              </p>
-            ) : (
-              <section className="analytics-chart" aria-label="Vulnerability indicator category counts">
-                <div className="analytics-chart__heading">
-                  <h2>Indicators by vulnerability category</h2>
-                  <span>{vulnerabilityAnalyticsTotal} indicators</span>
-                </div>
-                <div className="analytics-bars">
-                  {vulnerabilityAnalytics.map((item) => (
-                    <div className="analytics-bar" key={item.reason}>
-                      <div className="analytics-bar__label">
-                        <span>{item.reason}</span>
-                        <strong>{item.count}</strong>
-                      </div>
-                      <div
-                        className="analytics-bar__track"
-                        role="progressbar"
-                        aria-label={`${item.reason}: ${item.count} indicators`}
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        aria-valuenow={item.percentage}
-                      >
-                        <div className="analytics-bar__fill" style={{ width: `${item.percentage}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-          </section>
+            onApplyFilters={(event) => { event.preventDefault(); loadVulnerabilityAnalytics(); }}
+            onChangeCategories={(event) => setSelectedVulnerabilityCategories([...event.target.selectedOptions].map((option) => option.value))}
+            onChangeEndDate={(event) => setVulnerabilityAnalyticsEndDate(event.target.value)}
+            onChangeStartDate={(event) => setVulnerabilityAnalyticsStartDate(event.target.value)}
+            onRefresh={() => loadVulnerabilityAnalytics()}
+            selectedCategories={selectedVulnerabilityCategories}
+            startDate={vulnerabilityAnalyticsStartDate}
+            subtitle="Explore completed interaction counts by vulnerability indicator category."
+            title="Vulnerability Indicator Analytics"
+            total={vulnerabilityAnalyticsTotal}
+            totalLabel="indicators"
+          />
         )}
       </main>
     </div>
-  );
-}
-
-function AgentInteractionNavigation({
-  page,
-  onInteractions,
-  onAnalytics,
-  onDemandDriverAnalytics,
-  onVulnerabilityAnalytics,
-}) {
-  return (
-    <nav className="interaction-section-navigation" aria-label="Agent Interaction">
-      <button
-        type="button"
-        className={page === 'interactions' ? 'interaction-section-navigation__active' : ''}
-        aria-current={page === 'interactions' ? 'page' : undefined}
-        onClick={onInteractions}
-      >
-        Interactions
-      </button>
-      <button
-        type="button"
-        className={page === 'pcr-analytics' ? 'interaction-section-navigation__active' : ''}
-        aria-current={page === 'pcr-analytics' ? 'page' : undefined}
-        onClick={onAnalytics}
-      >
-        Primary Contact Reason Analytics
-      </button>
-      <button
-        type="button"
-        className={page === 'demand-driver-analytics' ? 'interaction-section-navigation__active' : ''}
-        aria-current={page === 'demand-driver-analytics' ? 'page' : undefined}
-        onClick={onDemandDriverAnalytics}
-      >
-        Demand Driver Analytics
-      </button>
-      <button
-        type="button"
-        className={page === 'vulnerability-analytics' ? 'interaction-section-navigation__active' : ''}
-        aria-current={page === 'vulnerability-analytics' ? 'page' : undefined}
-        onClick={onVulnerabilityAnalytics}
-      >
-        Vulnerability Indicator Analytics
-      </button>
-    </nav>
-  );
-}
-
-function ResponsePanel({ status, message, error, result, mode = 'request' }) {
-  const resultJson = result ? JSON.stringify(result.result || result, null, 2) : '';
-
-  return (
-    <section className="response-panel" aria-live="polite">
-      <div className="response-heading">
-        <div>
-          <p className="eyebrow">{mode === 'batch' ? 'BATCH EXECUTION' : 'AGENT RESPONSE'}</p>
-          <h2>
-            {status === 'success'
-              ? 'Completed'
-              : status === 'warning'
-                ? 'Completed with warnings'
-                : status === 'error'
-                  ? 'Execution failed'
-                  : status === 'loading'
-                    ? mode === 'batch' ? 'Submitting batch' : 'Request in progress'
-                    : mode === 'batch' ? 'Batch status' : 'Response'}
-          </h2>
-        </div>
-        <span className={`status-indicator status-indicator--${status}`}>
-          {status === 'idle' ? 'Ready' : status === 'loading' ? 'Running' : status}
-        </span>
-      </div>
-      <p className="response-message">{message}</p>
-      {status === 'loading' && (
-        <p className="execution-note">
-          Processing is underway. Progress and record counts are not provided by the current agent endpoint.
-        </p>
-      )}
-      {error && <p className="error-message" role="alert">{error}</p>}
-      {result && (
-        <div className="response-result">
-          <div className="result-meta">
-            <span><strong>Request ID</strong>{result.request_id}</span>
-            {result.agent_name && <span><strong>Agent</strong>{result.agent_name}</span>}
-            {result.duration_ms != null && <span><strong>Duration</strong>{result.duration_ms} ms</span>}
-          </div>
-          {result.summary && <p className="result-summary">{result.summary}</p>}
-          {result.result?.primary_contact_reason && (
-            <div className="primary-result">
-              <span className="meta-label">PRIMARY CONTACT REASON</span>
-              <strong>{result.result.primary_contact_reason}</strong>
-              {result.result.demand_driver && (
-                <span>Demand driver · {result.result.demand_driver}</span>
-              )}
-              {result.result.confidence && (
-                <span>Confidence · {result.result.confidence}</span>
-              )}
-            </div>
-          )}
-          <details className="result-json-details">
-            <summary>View raw response JSON</summary>
-            <div className="result-json-toolbar">
-              <CopyButton value={resultJson} label="Copy response" />
-            </div>
-            <pre className="result-json-full">{resultJson}</pre>
-          </details>
-          {Array.isArray(result.warnings) && result.warnings.length > 0 && (
-            <ul className="warning-list">
-              {result.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}
-            </ul>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function CopyButton({ value, label }) {
-  const [copyMessage, setCopyMessage] = useState('');
-
-  const copyValue = async () => {
-    if (!navigator.clipboard?.writeText) {
-      setCopyMessage('Clipboard access is unavailable in this browser.');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopyMessage('Copied to clipboard.');
-    } catch (copyError) {
-      setCopyMessage(copyError.message || 'Unable to copy to clipboard.');
-    }
-  };
-
-  return (
-    <span className="copy-control">
-      <button type="button" className="copy-button" onClick={copyValue} disabled={!value}>
-        {label}
-      </button>
-      {copyMessage && <span className="copy-message" role="status">{copyMessage}</span>}
-    </span>
-  );
-}
-
-function InteractionResult({ value, requestId }) {
-  const resultPayload = value?.result_json || value;
-  const classification = resultPayload?.result || resultPayload;
-  const assessment = classification?.vulnerability_assessment || {};
-  const knownClassificationFields = new Set([
-    'primary_contact_reason',
-    'demand_driver',
-    'confidence',
-    'evidence',
-    'demand_driver_evidence',
-    'vulnerability_assessment',
-  ]);
-  const additionalFields = Object.entries(classification || {})
-    .filter(([key]) => !knownClassificationFields.has(key) && key !== 'schema_version');
-  const assessmentFields = Object.entries(assessment)
-    .filter(([key]) => ![
-      'vulnerability_indicators',
-      'vulnerability_indicator_category',
-      'vulnerability_indicator_evidence',
-    ].includes(key));
-  const primaryEvidence = Array.isArray(classification?.evidence)
-    ? classification.evidence
-    : classification?.evidence
-      ? [classification.evidence]
-      : [];
-  const demandEvidence = Array.isArray(classification?.demand_driver_evidence)
-    ? classification.demand_driver_evidence
-    : classification?.demand_driver_evidence
-      ? [classification.demand_driver_evidence]
-      : [];
-  const vulnerabilityIndicators = Array.isArray(assessment.vulnerability_indicators)
-    ? assessment.vulnerability_indicators
-    : [];
-  const vulnerabilityCategories = Array.isArray(assessment.vulnerability_indicator_category)
-    ? assessment.vulnerability_indicator_category
-    : assessment.vulnerability_indicator_category
-      ? [assessment.vulnerability_indicator_category]
-      : vulnerabilityIndicators.map(({ category }) => category).filter(Boolean);
-  const vulnerabilityEvidence = Array.isArray(assessment.vulnerability_indicator_evidence)
-    ? assessment.vulnerability_indicator_evidence
-    : assessment.vulnerability_indicator_evidence
-      ? [assessment.vulnerability_indicator_evidence]
-      : vulnerabilityIndicators.map(({ evidence }) => evidence).filter(Boolean);
-  const anchorPrefix = `interaction-${String(requestId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const evidenceTargets = [
-    {
-      key: 'evidence',
-      id: `${anchorPrefix}-evidence`,
-      label: 'Primary Contact Reason Evidence',
-      items: primaryEvidence,
-      jsonValue: { result: { evidence: primaryEvidence } },
-    },
-    {
-      key: 'demand_driver_evidence',
-      id: `${anchorPrefix}-demand-driver-evidence`,
-      label: 'Demand Driver Evidence',
-      items: demandEvidence,
-      jsonValue: { result: { demand_driver_evidence: demandEvidence } },
-    },
-    {
-      key: 'vulnerability_indicator_evidence',
-      id: `${anchorPrefix}-vulnerability-evidence`,
-      label: 'Vulnerability Indicator Evidence',
-      items: vulnerabilityEvidence,
-      jsonValue: {
-        result: {
-          vulnerability_assessment: {
-            vulnerability_indicator_evidence: vulnerabilityEvidence,
-          },
-        },
-      },
-    },
-  ];
-  const openResultJson = (event) => {
-    const card = event.currentTarget.closest('.interaction-card');
-    const details = card?.querySelector('.result-json-details');
-    if (details) details.open = true;
-  };
-
-  return (
-    <>
-      <dl className="classification-result">
-        <div>
-          <dt>Primary Contact Reason</dt>
-          <dd>{classification?.primary_contact_reason ?? 'Not provided'}</dd>
-        </div>
-        <div>
-          <dt>Demand Driver</dt>
-          <dd>{classification?.demand_driver ?? 'Not provided'}</dd>
-        </div>
-        <div>
-          <dt>Confidence Level</dt>
-          <dd>{classification?.confidence ?? 'Not provided'}</dd>
-        </div>
-        <div>
-          <dt>
-            <a href={`#${anchorPrefix}-evidence`} onClick={openResultJson}>
-              Primary Contact Reason Evidence
-            </a>
-          </dt>
-          <dd>
-            {primaryEvidence.length > 0
-              ? <ul>{primaryEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-              : 'No evidence provided'}
-          </dd>
-        </div>
-        <div>
-          <dt>
-            <a href={`#${anchorPrefix}-demand-driver-evidence`} onClick={openResultJson}>
-              Demand Driver Evidence
-            </a>
-          </dt>
-          <dd>
-            {demandEvidence.length > 0
-              ? <ul>{demandEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-              : 'No demand driver evidence provided'}
-          </dd>
-        </div>
-        <div>
-          <dt>Vulnerability Indicator Category</dt>
-          <dd>
-            {vulnerabilityCategories.length > 0
-              ? <ul>{vulnerabilityCategories.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-              : 'No category provided'}
-          </dd>
-        </div>
-        <div>
-          <dt>
-            <a href={`#${anchorPrefix}-vulnerability-evidence`} onClick={openResultJson}>
-              Vulnerability Indicator Evidence
-            </a>
-          </dt>
-          <dd>
-            {vulnerabilityEvidence.length > 0
-              ? <ul>{vulnerabilityEvidence.map((item, index) => <li key={`${item}-${index}`}>{String(item)}</li>)}</ul>
-              : 'No vulnerability indicator evidence provided'}
-          </dd>
-        </div>
-        {[...additionalFields, ...assessmentFields].map(([key, fieldValue]) => (
-          <div key={key}>
-            <dt>{key.replaceAll('_', ' ')}</dt>
-            <dd>{typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)}</dd>
-          </div>
-        ))}
-      </dl>
-      <details className="result-json-details">
-        <summary>View raw result JSON</summary>
-        <div className="result-json-toolbar">
-          <CopyButton value={JSON.stringify(value, null, 2)} label="Copy result JSON" />
-        </div>
-        <div className="result-json-evidence">
-          {evidenceTargets.map(({ key, id, label, jsonValue }) => (
-            <section id={id} key={key}>
-              <h3>{label}</h3>
-              <pre>{JSON.stringify(jsonValue, null, 2)}</pre>
-            </section>
-          ))}
-        </div>
-        <pre className="result-json-full">{JSON.stringify(value, null, 2)}</pre>
-      </details>
-    </>
   );
 }
 
