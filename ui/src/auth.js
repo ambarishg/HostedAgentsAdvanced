@@ -21,6 +21,7 @@ export const ApiOperation = Object.freeze({
   VULNERABILITY_ANALYTICS_READ: 'vulnerability_analytics_read',
 });
 
+// Keep each UI operation tied to the Entra resource scope and app role it requires.
 const operationScopes = {
   [ApiOperation.AGENT_INVOKE]: hostedAgentScope,
   [ApiOperation.INTERACTION_HISTORY_READ]: persistenceScope,
@@ -62,6 +63,7 @@ const msalInstance = isEntraConfigured
       redirectUri,
     },
     cache: {
+      // Do not persist Entra tokens beyond the current browser session.
       cacheLocation: 'sessionStorage',
     },
   })
@@ -70,6 +72,7 @@ const msalInstance = isEntraConfigured
 let initializationPromise;
 let interactiveQueue = Promise.resolve();
 
+// MSAL permits only one interactive popup at a time.
 async function withInteractiveLock(operation) {
   const previous = interactiveQueue;
   let release;
@@ -129,6 +132,7 @@ export async function getAuthorizationHeaders(operation) {
     throw new Error(`No authorization policy is configured for operation "${operation}".`);
   }
   const accessToken = await acquireToken(scope);
+  // This gates the UI; the API independently validates the signed token and role.
   if (!hasRequiredRole(accessToken, operationRoles[operation])) {
     throw new AuthorizationError(operation);
   }
@@ -187,6 +191,8 @@ async function acquireToken(scope) {
 
 function hasRequiredRole(accessToken, requiredRole) {
   try {
+    // MSAL returns a signed JWT. The claims are inspected only for UI rendering;
+    // server-side authorization remains the security boundary.
     const [, encodedClaims] = accessToken.split('.');
     if (!encodedClaims) return false;
     const normalizedClaims = encodedClaims.replace(/-/g, '+').replace(/_/g, '/');
