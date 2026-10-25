@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -57,6 +58,7 @@ class InteractionHistoryItem(BaseModel):
     agent_name: str
     user_input: str
     result_json: dict[str, Any]
+    created_at: datetime | None = None
     primary_contact_reason: str | None = None
     demand_driver: str | None = None
     confidence: str | None = None

@@ -60,6 +60,7 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('Your agent is ready when you are.');
+  const [lastRunMode, setLastRunMode] = useState('request');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
@@ -94,6 +95,7 @@ function App() {
   const [vulnerabilityAnalyticsTotal, setVulnerabilityAnalyticsTotal] = useState(0);
   const [vulnerabilityAnalyticsError, setVulnerabilityAnalyticsError] = useState('');
   const [isVulnerabilityAnalyticsLoading, setIsVulnerabilityAnalyticsLoading] = useState(false);
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
 
   const agentNames = useMemo(
     () => [...new Set(interactions.map(({ agent_name: agentName }) => agentName).filter(Boolean))]
@@ -185,6 +187,7 @@ function App() {
 
   const openInteractions = () => {
     setPage('interactions');
+    setIsMobileNavigationOpen(false);
     if (authAccount) loadInteractions();
   };
 
@@ -386,6 +389,7 @@ function App() {
 
   const handleSubmit = async (event, batchMode = false) => {
     event.preventDefault();
+    setLastRunMode(batchMode ? 'batch' : 'request');
 
     const trimmedInput = userInput.trim();
     if (!batchMode && !trimmedInput) {
@@ -426,8 +430,12 @@ function App() {
       };
 
       setResult(finalResult);
-      setStatus('success');
-      setMessage('Your request is complete.');
+      const completedWithWarnings = Array.isArray(finalResult.warnings)
+        && finalResult.warnings.length > 0;
+      setStatus(completedWithWarnings ? 'warning' : 'success');
+      setMessage(completedWithWarnings
+        ? `The ${batchMode ? 'batch' : 'request'} completed with warnings.`
+        : batchMode ? 'The configured batch completed.' : 'Your request is complete.');
     } catch (fetchError) {
       setStatus('error');
       setError(fetchError.message || 'Unable to contact the hosted agent service.');
@@ -438,20 +446,44 @@ function App() {
   };
 
   const isAgentInteractionPage = ['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page);
+  const isInteractionNavigationActive = isAgentInteractionPage;
+  const navigateTo = (targetPage) => {
+    setPage(targetPage);
+    setIsMobileNavigationOpen(false);
+  };
 
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="#home" onClick={() => setPage('home')}>
-          <span className="brand-mark" aria-hidden="true">H</span>
-          <span>Hosted agents</span>
+        <a className="brand" href="#home" onClick={() => navigateTo('home')}>
+          <span className="brand-mark" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span className="brand-name">Voice Analytics
+            <span></span></span>
         </a>
-        <nav className="page-navigation" aria-label="Main navigation">
+        <button
+          type="button"
+          className="mobile-navigation-toggle"
+          aria-label={isMobileNavigationOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isMobileNavigationOpen}
+          aria-controls="primary-navigation"
+          onClick={() => setIsMobileNavigationOpen((open) => !open)}
+        >
+          <span aria-hidden="true">{isMobileNavigationOpen ? '×' : '☰'}</span>
+        </button>
+        <nav
+          id="primary-navigation"
+          className={`page-navigation${isMobileNavigationOpen ? ' page-navigation--open' : ''}`}
+          aria-label="Main navigation"
+        >
           <button
             type="button"
             className={page === 'home' ? 'page-navigation__active' : ''}
             aria-current={page === 'home' ? 'page' : undefined}
-            onClick={() => setPage('home')}
+            onClick={() => navigateTo('home')}
           >
             Home
           </button>
@@ -459,17 +491,17 @@ function App() {
             type="button"
             className={page === 'batch' ? 'page-navigation__active' : ''}
             aria-current={page === 'batch' ? 'page' : undefined}
-            onClick={() => setPage('batch')}
+            onClick={() => navigateTo('batch')}
           >
-            Batch processing
+            Batch Processing
           </button>
           <button
             type="button"
-            className={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' || page === 'vulnerability-analytics' ? 'page-navigation__active' : ''}
-            aria-current={page === 'interactions' || page === 'pcr-analytics' || page === 'demand-driver-analytics' || page === 'vulnerability-analytics' ? 'page' : undefined}
+            className={isInteractionNavigationActive ? 'page-navigation__active' : ''}
+            aria-current={isInteractionNavigationActive ? 'page' : undefined}
             onClick={openInteractions}
           >
-          Agent Interaction
+            Agent Interactions
           </button>
         </nav>
         {isEntraConfigured && (
@@ -490,6 +522,10 @@ function App() {
         <details className="settings">
           <summary>Settings</summary>
           <div className="settings-panel">
+            <div className="settings-panel__heading">
+              <h2>Connection settings</h2>
+              <p>Configure the service endpoints used by this workspace.</p>
+            </div>
             <label>
               Agent endpoint
               <input value={agentUrl} onChange={(event) => setAgentUrl(event.target.value)} />
@@ -519,11 +555,31 @@ function App() {
         {page === 'home' && (
           <section className="page-content">
             <div className="page-heading">
-              <p className="eyebrow">Home</p>
-              <h1>What can your agent help with?</h1>
-              <p>Enter a request and get a response from your hosted agent.</p>
+              <p className="eyebrow">Voice Analytics</p>
+              <h1>Voice Analytics</h1>
+              <p>Submit a request, run a configured workload, or investigate agent activity.</p>
             </div>
 
+            <div className="workspace-shortcuts" aria-label="Workspace shortcuts">
+              <button type="button" className="shortcut-card" onClick={() => navigateTo('batch')}>
+                <span className="shortcut-card__icon" aria-hidden="true">↗</span>
+                <span><strong>Batch processing</strong><small>Run a configured workload</small></span>
+                <span className="shortcut-card__arrow" aria-hidden="true">→</span>
+              </button>
+              <button type="button" className="shortcut-card" onClick={openInteractions}>
+                <span className="shortcut-card__icon shortcut-card__icon--blue" aria-hidden="true">≡</span>
+                <span><strong>Agent interactions</strong><small>Review requests and results</small></span>
+                <span className="shortcut-card__arrow" aria-hidden="true">→</span>
+              </button>
+            </div>
+
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">DIRECT REQUEST</p>
+                <h2>Send a request to your agent</h2>
+              </div>
+              <span className="section-heading__note">Request ID generated automatically</span>
+            </div>
             <form className="request-form" onSubmit={handleSubmit}>
               <label htmlFor="user-input">Your request</label>
               <textarea
@@ -534,7 +590,7 @@ function App() {
                 placeholder="Describe what you need…"
               />
               <div className="form-footer">
-                <span>Request ID is generated automatically.</span>
+                <span>Your request is sent to the configured hosted agent endpoint.</span>
                 <button type="submit" disabled={isLoading}>
                   {isLoading ? 'Working…' : 'Submit request'}
                 </button>
@@ -542,10 +598,10 @@ function App() {
             </form>
 
             <ResponsePanel
-              status={status}
-              message={message}
-              error={error}
-              result={result}
+              status={lastRunMode === 'request' ? status : 'idle'}
+              message={lastRunMode === 'request' ? message : 'Your agent is ready when you are.'}
+              error={lastRunMode === 'request' ? error : ''}
+              result={lastRunMode === 'request' ? result : null}
             />
           </section>
         )}
@@ -553,27 +609,36 @@ function App() {
         {page === 'batch' && (
           <section className="page-content">
             <div className="page-heading">
-              <p className="eyebrow">Batch processing</p>
-              <h1>Process a configured batch</h1>
-              <p>Run the input file or blob configured for your hosted agent.</p>
+              <p className="eyebrow">BATCH PROCESSING</p>
+              <h1>Batch Processing</h1>
+              <p>Run and monitor configured batch workloads for your hosted agents.</p>
             </div>
             <form className="batch-card" onSubmit={(event) => handleSubmit(event, true)}>
-              <div className="batch-description">
-                <span className="batch-icon" aria-hidden="true">↗</span>
-                <div>
-                  <h2>Configured batch input</h2>
-                  <p>The agent will read its batch source. No request text is needed here.</p>
+              <div className="batch-card__content">
+                <div className="batch-description">
+                  <span className="batch-icon" aria-hidden="true">↗</span>
+                  <div>
+                    <span className="meta-label">CONFIGURED WORKLOAD</span>
+                    <h2>Configured Batch</h2>
+                    <p>The hosted agent will read and process its configured input source.</p>
+                  </div>
+                </div>
+                <div className="batch-source">
+                  <span className="batch-source__icon" aria-hidden="true">▤</span>
+                  <span><strong>Input source</strong><small>Source details are not exposed by the current agent configuration.</small></span>
                 </div>
               </div>
               <button type="submit" disabled={isLoading}>
-                {isLoading ? 'Processing…' : 'Start batch'}
+                {isLoading ? 'Submitting batch…' : 'Start batch'}
               </button>
             </form>
+            <p className="batch-note">Starting a batch runs the input currently configured for the hosted agent. No input source details are available in this workspace.</p>
             <ResponsePanel
-              status={status}
-              message={message}
-              error={error}
-              result={result}
+              status={lastRunMode === 'batch' ? status : 'idle'}
+              message={lastRunMode === 'batch' ? message : 'No batch has been submitted in this session.'}
+              error={lastRunMode === 'batch' ? error : ''}
+              result={lastRunMode === 'batch' ? result : null}
+              mode="batch"
             />
           </section>
         )}
@@ -591,13 +656,15 @@ function App() {
               <div>
                 <p className="eyebrow">Interaction history</p>
                 <h1>Agent Interactions</h1>
-                <p>Review, search, and explore requests and results from your hosted agents.</p>
+                <p>Search, review, and investigate requests and responses from your hosted agents.</p>
               </div>
               <div className="interaction-heading__actions">
                 <div className="interaction-summary" aria-live="polite">
                   <strong>{visibleInteractions.length}</strong>
-                  <span>shown</span>
-                  <span className="interaction-summary__total">of {interactions.length} loaded</span>
+                  <span>matching</span>
+                  <span className="interaction-summary__total">
+                    {interactions.length} loaded{hasMoreInteractions ? ' · more available' : ''}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -610,6 +677,9 @@ function App() {
                 </button>
               </div>
             </div>
+            <p className="loaded-records-note">
+              Counts reflect the records loaded here; the API does not provide a database-wide total.
+            </p>
 
             {historyError && <p className="error-message" role="alert">{historyError}</p>}
             {authError && <p className="error-message" role="alert">{authError}</p>}
@@ -659,6 +729,19 @@ function App() {
                   <option value="agent-desc">Agent name (Z–A)</option>
                 </select>
               </label>
+              {(interactionSearch || agentFilter || interactionSort !== 'newest') && (
+                <button
+                  type="button"
+                  className="clear-filters-button"
+                  onClick={() => {
+                    setInteractionSearch('');
+                    setAgentFilter('');
+                    setInteractionSort('newest');
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
             {authAccount && isHistoryLoading && interactions.length === 0 ? (
               <p className="empty-state">Loading interactions…</p>
@@ -672,30 +755,46 @@ function App() {
               <div className="interaction-list">
                 {visibleInteractions.map((interaction) => (
                   <article className="interaction-card" key={interaction.request_id}>
-                    <div className="interaction-card__heading">
-                      <div>
-                        <span className="meta-label">Request ID</span>
-                        <strong>{interaction.request_id}</strong>
+                    <div className="interaction-card__overview">
+                      <div className="interaction-card__identity">
+                        <span className="agent-name">{interaction.agent_name}</span>
+                        <span className="meta-label">REQUEST ID</span>
+                        <strong className="request-id">{interaction.request_id}</strong>
+                        <CopyButton value={interaction.request_id} label="Copy request ID" />
                       </div>
-                      <span className="agent-name">{interaction.agent_name}</span>
-                    </div>
-                    <div className="interaction-card__body">
-                      <div>
-                        <h2>Request</h2>
-                        <p>{interaction.user_input || 'Configured batch input'}</p>
-                      </div>
-                      <div>
-                        <h2>Result</h2>
-                        {interaction.result_json
-                          ? (
-                            <InteractionResult
-                              value={interaction.result_json}
-                              requestId={interaction.request_id}
-                            />
-                          )
-                          : <p className="result-empty">No result recorded.</p>}
+                      <div className="interaction-card__summary">
+                        {interaction.created_at && (
+                          <time dateTime={interaction.created_at}>
+                            {new Date(interaction.created_at).toLocaleString()}
+                          </time>
+                        )}
+                        <strong>{interaction.primary_contact_reason || 'Classification result'}</strong>
+                        <span>{interaction.user_input || 'Configured batch input'}</span>
                       </div>
                     </div>
+                    <details className="interaction-card__details">
+                      <summary>View interaction details</summary>
+                      <div className="interaction-card__body">
+                        <div>
+                          <div className="detail-section-heading">
+                            <h2>Request</h2>
+                            <CopyButton value={interaction.user_input || ''} label="Copy request" />
+                          </div>
+                          <p>{interaction.user_input || 'Configured batch input'}</p>
+                        </div>
+                        <div>
+                          <h2>Agent result</h2>
+                          {interaction.result_json
+                            ? (
+                              <InteractionResult
+                                value={interaction.result_json}
+                                requestId={interaction.request_id}
+                              />
+                            )
+                            : <p className="result-empty">No result recorded.</p>}
+                        </div>
+                      </div>
+                    </details>
                   </article>
                 ))}
               </div>
@@ -1148,27 +1247,64 @@ function AgentInteractionNavigation({
   );
 }
 
-function ResponsePanel({ status, message, error, result }) {
+function ResponsePanel({ status, message, error, result, mode = 'request' }) {
+  const resultJson = result ? JSON.stringify(result.result || result, null, 2) : '';
+
   return (
     <section className="response-panel" aria-live="polite">
       <div className="response-heading">
         <div>
-          <p className="eyebrow">Agent response</p>
-          <h2>{status === 'success' ? 'Completed' : status === 'loading' ? 'In progress' : 'Response'}</h2>
+          <p className="eyebrow">{mode === 'batch' ? 'BATCH EXECUTION' : 'AGENT RESPONSE'}</p>
+          <h2>
+            {status === 'success'
+              ? 'Completed'
+              : status === 'warning'
+                ? 'Completed with warnings'
+                : status === 'error'
+                  ? 'Execution failed'
+                  : status === 'loading'
+                    ? mode === 'batch' ? 'Submitting batch' : 'Request in progress'
+                    : mode === 'batch' ? 'Batch status' : 'Response'}
+          </h2>
         </div>
-        <span className={`status-indicator status-indicator--${status}`}>{status}</span>
+        <span className={`status-indicator status-indicator--${status}`}>
+          {status === 'idle' ? 'Ready' : status === 'loading' ? 'Running' : status}
+        </span>
       </div>
       <p className="response-message">{message}</p>
+      {status === 'loading' && (
+        <p className="execution-note">
+          Processing is underway. Progress and record counts are not provided by the current agent endpoint.
+        </p>
+      )}
       {error && <p className="error-message" role="alert">{error}</p>}
       {result && (
         <div className="response-result">
           <div className="result-meta">
             <span><strong>Request ID</strong>{result.request_id}</span>
-            <span><strong>Agent</strong>{result.agent_name || 'Hosted agent'}</span>
-            <span><strong>Duration</strong>{result.duration_ms ?? '—'}{result.duration_ms != null && ' ms'}</span>
+            {result.agent_name && <span><strong>Agent</strong>{result.agent_name}</span>}
+            {result.duration_ms != null && <span><strong>Duration</strong>{result.duration_ms} ms</span>}
           </div>
           {result.summary && <p className="result-summary">{result.summary}</p>}
-          <pre>{JSON.stringify(result.result || result, null, 2)}</pre>
+          {result.result?.primary_contact_reason && (
+            <div className="primary-result">
+              <span className="meta-label">PRIMARY CONTACT REASON</span>
+              <strong>{result.result.primary_contact_reason}</strong>
+              {result.result.demand_driver && (
+                <span>Demand driver · {result.result.demand_driver}</span>
+              )}
+              {result.result.confidence && (
+                <span>Confidence · {result.result.confidence}</span>
+              )}
+            </div>
+          )}
+          <details className="result-json-details">
+            <summary>View raw response JSON</summary>
+            <div className="result-json-toolbar">
+              <CopyButton value={resultJson} label="Copy response" />
+            </div>
+            <pre className="result-json-full">{resultJson}</pre>
+          </details>
           {Array.isArray(result.warnings) && result.warnings.length > 0 && (
             <ul className="warning-list">
               {result.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}
@@ -1180,9 +1316,53 @@ function ResponsePanel({ status, message, error, result }) {
   );
 }
 
+function CopyButton({ value, label }) {
+  const [copyMessage, setCopyMessage] = useState('');
+
+  const copyValue = async () => {
+    if (!navigator.clipboard?.writeText) {
+      setCopyMessage('Clipboard access is unavailable in this browser.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyMessage('Copied to clipboard.');
+    } catch (copyError) {
+      setCopyMessage(copyError.message || 'Unable to copy to clipboard.');
+    }
+  };
+
+  return (
+    <span className="copy-control">
+      <button type="button" className="copy-button" onClick={copyValue} disabled={!value}>
+        {label}
+      </button>
+      {copyMessage && <span className="copy-message" role="status">{copyMessage}</span>}
+    </span>
+  );
+}
+
 function InteractionResult({ value, requestId }) {
-  const classification = value?.result_json || value?.result || value;
+  const resultPayload = value?.result_json || value;
+  const classification = resultPayload?.result || resultPayload;
   const assessment = classification?.vulnerability_assessment || {};
+  const knownClassificationFields = new Set([
+    'primary_contact_reason',
+    'demand_driver',
+    'confidence',
+    'evidence',
+    'demand_driver_evidence',
+    'vulnerability_assessment',
+  ]);
+  const additionalFields = Object.entries(classification || {})
+    .filter(([key]) => !knownClassificationFields.has(key) && key !== 'schema_version');
+  const assessmentFields = Object.entries(assessment)
+    .filter(([key]) => ![
+      'vulnerability_indicators',
+      'vulnerability_indicator_category',
+      'vulnerability_indicator_evidence',
+    ].includes(key));
   const primaryEvidence = Array.isArray(classification?.evidence)
     ? classification.evidence
     : classification?.evidence
@@ -1301,9 +1481,18 @@ function InteractionResult({ value, requestId }) {
               : 'No vulnerability indicator evidence provided'}
           </dd>
         </div>
+        {[...additionalFields, ...assessmentFields].map(([key, fieldValue]) => (
+          <div key={key}>
+            <dt>{key.replaceAll('_', ' ')}</dt>
+            <dd>{typeof fieldValue === 'string' ? fieldValue : JSON.stringify(fieldValue)}</dd>
+          </div>
+        ))}
       </dl>
       <details className="result-json-details">
-        <summary>View Result JSON</summary>
+        <summary>View raw result JSON</summary>
+        <div className="result-json-toolbar">
+          <CopyButton value={JSON.stringify(value, null, 2)} label="Copy result JSON" />
+        </div>
         <div className="result-json-evidence">
           {evidenceTargets.map(({ key, id, label, jsonValue }) => (
             <section id={id} key={key}>

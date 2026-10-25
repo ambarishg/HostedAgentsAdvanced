@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import get_args
 
 import azure.functions as func
@@ -36,6 +36,7 @@ def test_history_endpoint_returns_interactions(api_settings, monkeypatch) -> Non
         request_id=uuid.uuid4(),
         agent_name="test-agent",
         user_input="What happened?",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
         result_json={
             "schema_version": "generic-v1",
             "result": {

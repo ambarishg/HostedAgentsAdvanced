@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import get_args
 
 import pytest
@@ -16,6 +16,44 @@ from persistence_api.service import (
     PayloadHashMismatch,
     PersistenceService,
 )
+
+
+def test_history_query_includes_creation_timestamp() -> None:
+    created_at = datetime(2025, 1, 1, tzinfo=UTC)
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{
+                "request_id": uuid.uuid4(),
+                "agent_name": "test-agent",
+                "user_input": "an input",
+                "result_json": {"result": {}},
+                "created_at": created_at,
+            }]
+
+    class Connection:
+        def execute(self, statement):
+            sql = str(statement.compile(dialect=postgresql.dialect()))
+            assert "agent_interactions.created_at" in sql
+            return Result()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Engine:
+        def connect(self):
+            return Connection()
+
+    rows, has_more = InteractionRepository(Engine()).list_interactions(limit=10, offset=0)
+
+    assert rows[0]["created_at"] == created_at
+    assert not has_more
 
 
 def test_vulnerability_analytics_query_names_the_expanded_category_column() -> None:
