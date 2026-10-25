@@ -49,6 +49,11 @@ class AgentSettings:
     batch_value_column: str | None = None
     batch_blob_version_id: str | None = None
     batch_file_path: Path | None = None
+    authorization_tenant_id: str = ""
+    authorization_audience: str = ""
+    authorization_allowed_client_ids: frozenset[str] = frozenset()
+    direct_request_app_role: str = ""
+    batch_request_app_role: str = ""
 
     @classmethod
     def from_env(cls) -> AgentSettings:
@@ -65,6 +70,31 @@ class AgentSettings:
         ):
             if not value:
                 raise ValueError(f"{key} is required.")
+
+        authorization_tenant_id = (
+            os.getenv("AGENT_AUTH_TENANT_ID", "").strip()
+            or os.getenv("API_TENANT_ID", "").strip()
+        )
+        authorization_audience = (
+            os.getenv("AGENT_AUTH_AUDIENCE", "").strip()
+            or os.getenv("API_AUDIENCE", "").strip()
+        )
+        direct_request_app_role = os.getenv(
+            "AGENT_DIRECT_REQUEST_APP_ROLE", "Agent.Invoke"
+        ).strip()
+        batch_request_app_role = os.getenv(
+            "AGENT_BATCH_REQUEST_APP_ROLE", "Agent.Batch.Run"
+        ).strip()
+        if not all((authorization_tenant_id, authorization_audience)):
+            raise ValueError(
+                "Configure AGENT_AUTH_TENANT_ID and AGENT_AUTH_AUDIENCE, or reuse "
+                "API_TENANT_ID and API_AUDIENCE."
+            )
+        authorization_allowed_client_ids = frozenset(
+            value.strip()
+            for value in os.getenv("AGENT_AUTH_ALLOWED_CLIENT_IDS", "").split(",")
+            if value.strip()
+        )
 
         project_parts = urlparse(endpoint)
         if project_parts.scheme != "https" or not project_parts.hostname:
@@ -178,4 +208,9 @@ class AgentSettings:
             batch_value_column=batch_value_column,
             batch_blob_version_id=batch_blob_version_id,
             batch_file_path=batch_file_path,
+            authorization_tenant_id=authorization_tenant_id,
+            authorization_audience=authorization_audience,
+            authorization_allowed_client_ids=authorization_allowed_client_ids,
+            direct_request_app_role=direct_request_app_role,
+            batch_request_app_role=batch_request_app_role,
         )

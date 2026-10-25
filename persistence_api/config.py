@@ -26,6 +26,7 @@ class ApiSettings:
     audience: str
     required_scope: str
     required_app_role: str
+    interaction_history_app_role: str
     allowed_client_ids: frozenset[str]
     agent_name: str
     agent_version: str
@@ -115,6 +116,9 @@ class ApiSettings:
             audience=required["API_AUDIENCE"],
             required_scope=os.getenv("API_REQUIRED_SCOPE", "").strip(),
             required_app_role=os.getenv("API_REQUIRED_APP_ROLE", "").strip(),
+            interaction_history_app_role=os.getenv(
+                "API_INTERACTION_HISTORY_APP_ROLE", "InteractionHistory.Read"
+            ).strip(),
             allowed_client_ids=allowed_clients,
             agent_name=agent_name,
             agent_version=agent_version,

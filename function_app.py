@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from hosted_agent.schemas import ContactReason, DemandDriver, VulnerabilityCategory
 from persistence_api.auth import AuthenticationError, EntraTokenValidator
+from persistence_api.authorization import AuthorizationPolicy, AuthorizationService
 from persistence_api.config import ApiSettings, get_settings
 from persistence_api.database import get_engine
 from persistence_api.repository import IdempotencyConflict
@@ -52,6 +53,24 @@ def _error(code: str, message: str, status_code: int) -> func.HttpResponse:
     )
 
 
+def _authorization_service() -> AuthorizationService:
+    return AuthorizationService(get_settings(), _token_validator())
+
+
+def _authorize(
+    req: func.HttpRequest, policy: AuthorizationPolicy
+) -> func.HttpResponse | None:
+    try:
+        _authorization_service().authorize(req.headers.get("Authorization"), policy)
+    except AuthenticationError as exc:
+        logger.warning(
+            "Persistence API rejected caller",
+            extra={"error_code": exc.code, "status_code": exc.status_code},
+        )
+        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    return None
+
+
 @app.route(route="pcr-results", methods=["POST"])
 def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -62,14 +81,9 @@ def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
 
-    try:
-        _token_validator().validate(req.headers.get("Authorization"))
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    authorization_error = _authorize(req, AuthorizationPolicy.PERSISTENCE_WRITE)
+    if authorization_error:
+        return authorization_error
 
     body = req.get_body()
     if len(body) > settings.max_request_bytes:
@@ -116,14 +130,9 @@ def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
 
-    try:
-        _token_validator().validate(req.headers.get("Authorization"))
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
+    if authorization_error:
+        return authorization_error
 
     try:
         limit = int(req.params.get("limit", "100"))
@@ -159,14 +168,9 @@ def get_pcr_analytics(req: func.HttpRequest) -> func.HttpResponse:
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
 
-    try:
-        _token_validator().validate(req.headers.get("Authorization"))
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
+    if authorization_error:
+        return authorization_error
 
     try:
         start_date = (
@@ -216,14 +220,9 @@ def get_demand_driver_analytics(req: func.HttpRequest) -> func.HttpResponse:
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
 
-    try:
-        _token_validator().validate(req.headers.get("Authorization"))
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
+    if authorization_error:
+        return authorization_error
 
     try:
         start_date = (
@@ -277,14 +276,9 @@ def get_vulnerability_analytics(req: func.HttpRequest) -> func.HttpResponse:
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
 
-    try:
-        _token_validator().validate(req.headers.get("Authorization"))
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
+    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
+    if authorization_error:
+        return authorization_error
 
     try:
         start_date = (

@@ -6,6 +6,7 @@
     "API_TENANT_ID": "YOUR-TENANT-ID",
     "API_AUDIENCE": "api://YOUR-API-APPLICATION-ID",
     "API_REQUIRED_SCOPE": "access_as_user",
+    "API_INTERACTION_HISTORY_APP_ROLE": "InteractionHistory.Read",
     "PERSISTENCE_AGENT_NAME": "pcr-agent",
     "PERSISTENCE_AGENT_VERSION": "1.0.0",
     "PERSISTENCE_SCHEMA_VERSION": "generic-v1",

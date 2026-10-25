@@ -57,7 +57,7 @@ def test_history_endpoint_returns_interactions(api_settings, monkeypatch) -> Non
     expected = InteractionHistoryResponse(items=[item], limit=25, offset=50, has_more=True)
 
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             assert authorization is None
 
     class Service:
@@ -79,7 +79,7 @@ def test_history_endpoint_returns_interactions(api_settings, monkeypatch) -> Non
 
 def test_history_endpoint_requires_valid_pagination(api_settings, monkeypatch) -> None:
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             return None
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
@@ -98,7 +98,7 @@ def test_history_endpoint_requires_valid_pagination(api_settings, monkeypatch) -
 
 def test_history_endpoint_rejects_unauthenticated_caller(api_settings, monkeypatch) -> None:
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             raise AuthenticationError("authentication_required", 401)
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
@@ -123,7 +123,7 @@ def test_pcr_analytics_endpoint_passes_filters_to_service(api_settings, monkeypa
     )
 
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             assert authorization is None
 
     class Service:
@@ -167,7 +167,7 @@ def test_demand_driver_analytics_endpoint_passes_filters_to_service(
     )
 
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             assert authorization is None
 
     class Service:
@@ -205,7 +205,7 @@ def test_demand_driver_analytics_endpoint_rejects_invalid_category(
     api_settings, monkeypatch
 ) -> None:
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             return None
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
@@ -234,7 +234,7 @@ def test_vulnerability_analytics_endpoint_passes_filters_to_service(
     )
 
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             assert authorization is None
 
     class Service:
@@ -272,7 +272,7 @@ def test_vulnerability_analytics_endpoint_rejects_invalid_category(
     api_settings, monkeypatch
 ) -> None:
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             return None
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)
@@ -303,7 +303,7 @@ def test_pcr_analytics_endpoint_rejects_invalid_filters(
     api_settings, monkeypatch, params: dict[str, str], error_code: str
 ) -> None:
     class TokenValidator:
-        def validate(self, authorization: str | None) -> None:
+        def validate(self, authorization: str | None, **kwargs) -> None:
             return None
 
     monkeypatch.setattr(function_app, "get_settings", lambda: api_settings)

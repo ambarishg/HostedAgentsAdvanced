@@ -12,6 +12,17 @@ from hosted_agent.schemas import ExternalRequest
 from persistence_api.config import ApiSettings
 
 
+@pytest.fixture(autouse=True)
+def agent_authorization_service(monkeypatch):
+    from hosted_agent import entrypoint
+
+    monkeypatch.setattr(
+        entrypoint,
+        "get_agent_authorization_service",
+        lambda: type("AuthorizationService", (), {"authorize": lambda *args, **kwargs: {}})(),
+    )
+
+
 @pytest.fixture
 def agent_settings() -> AgentSettings:
     return AgentSettings(
@@ -35,6 +46,11 @@ def agent_settings() -> AgentSettings:
         persistence_api_scope="api://persistence/.default",
         persistence_api_timeout_seconds=1,
         persistence_api_retries=0,
+        authorization_tenant_id="tenant",
+        authorization_audience="api://hosted-agent",
+        authorization_allowed_client_ids=frozenset({"ui-client"}),
+        direct_request_app_role="Agent.Invoke",
+        batch_request_app_role="Agent.Batch.Run",
     )
 
 
@@ -64,6 +80,7 @@ def api_settings() -> ApiSettings:
         audience="api://persistence",
         required_scope="save",
         required_app_role="",
+        interaction_history_app_role="InteractionHistory.Read",
         allowed_client_ids=frozenset(),
         agent_name="test-agent",
         agent_version="1.0.0",

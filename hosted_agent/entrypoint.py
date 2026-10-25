@@ -10,6 +10,7 @@ from pathlib import Path
 from agent_framework_foundry_hosting import InvocationRun, InvocationsHostServer
 from starlette.requests import Request
 
+from hosted_agent.auth import AgentAuthorizationService
 from hosted_agent.config import AgentSettings
 from hosted_agent.orchestration import (
     HostedOrchestrator,
@@ -22,6 +23,7 @@ from hosted_agent.prompt_provider import (
     create_prompt_provider,
 )
 from hosted_agent.schemas import ExternalRequest
+from persistence_api.auth import AuthenticationError
 
 logger = logging.getLogger(__name__)
 _settings: AgentSettings | None = None
@@ -32,6 +34,11 @@ def get_agent_settings() -> AgentSettings:
     if _settings is None:
         _settings = AgentSettings.from_env()
     return _settings
+
+
+@lru_cache(maxsize=1)
+def get_agent_authorization_service() -> AgentAuthorizationService:
+    return AgentAuthorizationService(get_agent_settings())
 
 
 @lru_cache(maxsize=1)
@@ -71,6 +78,16 @@ async def parse_request(request: Request) -> InvocationRun:
         raise ValueError("Batch mode was requested, but no batch input is configured.")
     if batch_mode:
         payload["user_input"] = "Process configured batch input."
+    try:
+        get_agent_authorization_service().authorize(
+            request.headers.get("Authorization"), batch_mode=batch_mode
+        )
+    except AuthenticationError as exc:
+        logger.warning(
+            "Hosted agent rejected caller",
+            extra={"error_code": exc.code, "status_code": exc.status_code},
+        )
+        raise ValueError("Caller authentication or authorization failed.") from exc
     try:
         external_request = ExternalRequest.model_validate(payload)
     except ValueError as exc:

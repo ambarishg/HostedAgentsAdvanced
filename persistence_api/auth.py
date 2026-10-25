@@ -29,7 +29,13 @@ class EntraTokenValidator:
             lifespan=3600,
         )
 
-    def validate(self, authorization_header: str | None) -> Mapping[str, Any]:
+    def validate(
+        self,
+        authorization_header: str | None,
+        *,
+        required_scope: str | None = None,
+        required_app_role: str | None = None,
+    ) -> Mapping[str, Any]:
         if not authorization_header:
             raise AuthenticationError("authentication_required", 401)
         scheme, _, token = authorization_header.partition(" ")
@@ -60,8 +66,12 @@ class EntraTokenValidator:
             if isinstance(role_claims, list)
             else set()
         )
-        required_scope = self._settings.required_scope
-        required_role = self._settings.required_app_role
+        required_scope = (
+            self._settings.required_scope if required_scope is None else required_scope
+        )
+        required_role = (
+            self._settings.required_app_role if required_app_role is None else required_app_role
+        )
         if (required_scope and required_scope not in scopes) and (
             required_role and required_role not in roles
         ):

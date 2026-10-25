@@ -8,8 +8,11 @@ const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID?.trim();
 const redirectUri = import.meta.env.VITE_ENTRA_REDIRECT_URI?.trim()
   || `${window.location.origin}/redirect.html`;
 const persistenceScope = import.meta.env.VITE_PERSISTENCE_API_SCOPE?.trim();
+const hostedAgentScope = import.meta.env.VITE_HOSTED_AGENT_SCOPE?.trim() || persistenceScope;
 
-export const isEntraConfigured = Boolean(clientId && tenantId && persistenceScope);
+export const isEntraConfigured = Boolean(
+  clientId && tenantId && persistenceScope && hostedAgentScope,
+);
 export const entraConfigurationKeys = [
   !clientId && 'VITE_ENTRA_CLIENT_ID',
   !tenantId && 'VITE_ENTRA_TENANT_ID',
@@ -84,7 +87,15 @@ export async function signOutOfEntra() {
 }
 
 export async function acquirePersistenceToken() {
-  if (!msalInstance || !persistenceScope) {
+  return acquireToken(persistenceScope);
+}
+
+export async function acquireHostedAgentToken() {
+  return acquireToken(hostedAgentScope);
+}
+
+async function acquireToken(scope) {
+  if (!msalInstance || !scope) {
     throw new Error('Entra sign-in is not configured for this UI.');
   }
 
@@ -94,7 +105,7 @@ export async function acquirePersistenceToken() {
   try {
     const response = await msalInstance.acquireTokenSilent({
       account,
-      scopes: [persistenceScope],
+      scopes: [scope],
     });
     return response.accessToken;
   } catch (error) {
@@ -103,14 +114,14 @@ export async function acquirePersistenceToken() {
       try {
         const response = await msalInstance.acquireTokenSilent({
           account,
-          scopes: [persistenceScope],
+          scopes: [scope],
         });
         return response.accessToken;
       } catch (retryError) {
         if (!(retryError instanceof InteractionRequiredAuthError)) throw retryError;
         const response = await msalInstance.acquireTokenPopup({
           account,
-          scopes: [persistenceScope],
+          scopes: [scope],
         });
         return response.accessToken;
       }

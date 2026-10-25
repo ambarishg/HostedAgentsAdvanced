@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  acquireHostedAgentToken,
   acquirePersistenceToken,
   entraConfigurationKeys,
   initializeEntra,
@@ -426,9 +427,13 @@ function App() {
     setResult(null);
 
     try {
+      const token = await acquireHostedAgentToken();
       const response = await fetch(agentUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(createRequestBody(trimmedInput, requestId, batchMode)),
       });
 

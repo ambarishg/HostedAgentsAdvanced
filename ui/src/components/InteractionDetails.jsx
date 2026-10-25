@@ -23,7 +23,7 @@ function AgentInteractionNavigation({
         aria-current={page === 'pcr-analytics' ? 'page' : undefined}
         onClick={onAnalytics}
       >
-        Primary Contact Reason Analytics
+        Primary Contact Reason
       </button>
       <button
         type="button"
@@ -31,7 +31,7 @@ function AgentInteractionNavigation({
         aria-current={page === 'demand-driver-analytics' ? 'page' : undefined}
         onClick={onDemandDriverAnalytics}
       >
-        Demand Driver Analytics
+        Demand Driver
       </button>
       <button
         type="button"
@@ -39,7 +39,7 @@ function AgentInteractionNavigation({
         aria-current={page === 'vulnerability-analytics' ? 'page' : undefined}
         onClick={onVulnerabilityAnalytics}
       >
-        Vulnerability Indicator Analytics
+        Vulnerability Indicator
       </button>
     </nav>
   );

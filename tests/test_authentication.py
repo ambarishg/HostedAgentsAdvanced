@@ -4,6 +4,7 @@ import jwt
 import pytest
 
 from persistence_api.auth import AuthenticationError, EntraTokenValidator
+from persistence_api.authorization import AuthorizationPolicy, AuthorizationService
 from persistence_api.config import ApiSettings
 
 
@@ -19,6 +20,7 @@ def auth_settings() -> ApiSettings:
         audience="api://persistence",
         required_scope="save",
         required_app_role="",
+        interaction_history_app_role="InteractionHistory.Read",
         allowed_client_ids=frozenset({"agent-client"}),
         agent_name="agent",
         agent_version="1",
@@ -114,3 +116,65 @@ def test_missing_permission_is_403(monkeypatch) -> None:
         EntraTokenValidator(auth_settings(), jwks_client=FakeJwks()).validate("Bearer signed-token")
 
     assert error.value.status_code == 403
+
+
+def test_route_specific_app_role_is_required(monkeypatch) -> None:
+    claims = {
+        "iss": "https://login.microsoftonline.com/tenant/v2.0",
+        "aud": "api://persistence",
+        "exp": 4_000_000_000,
+        "iat": 1_700_000_000,
+        "roles": ["InteractionHistory.Read"],
+        "azp": "agent-client",
+    }
+    monkeypatch.setattr(jwt, "decode", lambda *args, **kwargs: claims)
+
+    validated = EntraTokenValidator(auth_settings(), jwks_client=FakeJwks()).validate(
+        "Bearer signed-token",
+        required_scope="",
+        required_app_role="InteractionHistory.Read",
+    )
+
+    assert validated["roles"] == ["InteractionHistory.Read"]
+
+
+def test_route_specific_app_role_rejects_unassigned_users(monkeypatch) -> None:
+    claims = {
+        "iss": "https://login.microsoftonline.com/tenant/v2.0",
+        "aud": "api://persistence",
+        "exp": 4_000_000_000,
+        "iat": 1_700_000_000,
+        "roles": ["Agent.Invoke"],
+        "azp": "agent-client",
+    }
+    monkeypatch.setattr(jwt, "decode", lambda *args, **kwargs: claims)
+
+    with pytest.raises(AuthenticationError) as error:
+        EntraTokenValidator(auth_settings(), jwks_client=FakeJwks()).validate(
+            "Bearer signed-token",
+            required_scope="",
+            required_app_role="InteractionHistory.Read",
+        )
+
+    assert error.value.status_code == 403
+
+
+def test_authorization_service_applies_the_interaction_history_policy(monkeypatch) -> None:
+    claims = {
+        "iss": "https://login.microsoftonline.com/tenant/v2.0",
+        "aud": "api://persistence",
+        "exp": 4_000_000_000,
+        "iat": 1_700_000_000,
+        "roles": ["InteractionHistory.Read"],
+        "azp": "agent-client",
+    }
+    monkeypatch.setattr(jwt, "decode", lambda *args, **kwargs: claims)
+    service = AuthorizationService(
+        auth_settings(), EntraTokenValidator(auth_settings(), FakeJwks())
+    )
+
+    validated = service.authorize(
+        "Bearer signed-token", AuthorizationPolicy.INTERACTION_HISTORY_READ
+    )
+
+    assert validated["roles"] == ["InteractionHistory.Read"]
