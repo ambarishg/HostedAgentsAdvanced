@@ -1,5 +1,7 @@
 export function AppHeader({
   account,
+  canInvokeAgent,
+  canReadInteractions,
   analyticsUrl,
   agentUrl,
   demandDriverAnalyticsUrl,
@@ -40,9 +42,9 @@ export function AppHeader({
         className={`page-navigation${isMobileNavigationOpen ? ' page-navigation--open' : ''}`}
         aria-label="Main navigation"
       >
-        <button type="button" className={page === 'home' ? 'page-navigation__active' : ''} aria-current={page === 'home' ? 'page' : undefined} onClick={() => onNavigate('home')}>Home</button>
-        <button type="button" className={page === 'batch' ? 'page-navigation__active' : ''} aria-current={page === 'batch' ? 'page' : undefined} onClick={() => onNavigate('batch')}>Batch Processing</button>
-        <button type="button" className={isInteractionPage ? 'page-navigation__active' : ''} aria-current={isInteractionPage ? 'page' : undefined} onClick={onOpenInteractions}>Agent Interactions</button>
+        {canInvokeAgent && <button type="button" className={page === 'home' ? 'page-navigation__active' : ''} aria-current={page === 'home' ? 'page' : undefined} onClick={() => onNavigate('home')}>Home</button>}
+        {canInvokeAgent && <button type="button" className={page === 'batch' ? 'page-navigation__active' : ''} aria-current={page === 'batch' ? 'page' : undefined} onClick={() => onNavigate('batch')}>Batch Processing</button>}
+        {canReadInteractions && <button type="button" className={isInteractionPage ? 'page-navigation__active' : ''} aria-current={isInteractionPage ? 'page' : undefined} onClick={onOpenInteractions}>Agent Interactions</button>}
       </nav>
       <div className="auth-controls">
         <span className="signed-in-user">{account.name || account.username}</span>

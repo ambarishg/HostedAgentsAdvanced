@@ -1,0 +1,3 @@
+The Pages in the UI should not be rendered until and unless it is authorized.
+The UI should interact with the authorization service to obtain the necessary authorization headers before making any API requests. This ensures that the user has the required permissions for the requested operation and prevents unauthorized access to the UI components.
+Additionally, the UI should handle cases where the authorization service denies access, such as displaying appropriate error messages or redirecting the user to a login page. This provides a seamless and secure user experience while enforcing the application's authorization policies.

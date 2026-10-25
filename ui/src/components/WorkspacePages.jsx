@@ -7,6 +7,7 @@ export function HomePage({
   message,
   onNavigate,
   onOpenInteractions,
+  canReadInteractions,
   onSubmit,
   result,
   status,
@@ -40,11 +41,13 @@ export function HomePage({
           <span><strong>Batch processing</strong><small>Run a configured workload</small></span>
           <span className="shortcut-card__arrow" aria-hidden="true">→</span>
         </button>
-        <button type="button" className="shortcut-card" onClick={onOpenInteractions}>
-          <span className="shortcut-card__icon shortcut-card__icon--blue" aria-hidden="true">≡</span>
-          <span><strong>Agent interactions</strong><small>Review previous requests and results</small></span>
-          <span className="shortcut-card__arrow" aria-hidden="true">→</span>
-        </button>
+        {canReadInteractions && (
+          <button type="button" className="shortcut-card" onClick={onOpenInteractions}>
+            <span className="shortcut-card__icon shortcut-card__icon--blue" aria-hidden="true">≡</span>
+            <span><strong>Agent interactions</strong><small>Review previous requests and results</small></span>
+            <span className="shortcut-card__arrow" aria-hidden="true">→</span>
+          </button>
+        )}
       </div>
     </section>
   );

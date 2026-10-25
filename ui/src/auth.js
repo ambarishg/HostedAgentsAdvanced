@@ -9,6 +9,9 @@ const redirectUri = import.meta.env.VITE_ENTRA_REDIRECT_URI?.trim()
   || `${window.location.origin}/redirect.html`;
 const persistenceScope = import.meta.env.VITE_PERSISTENCE_API_SCOPE?.trim();
 const hostedAgentScope = import.meta.env.VITE_HOSTED_AGENT_SCOPE?.trim() || persistenceScope;
+const agentInvokeAppRole = import.meta.env.VITE_AGENT_INVOKE_APP_ROLE?.trim() || 'Agent.Invoke';
+const interactionHistoryReadAppRole = import.meta.env.VITE_INTERACTION_HISTORY_READ_APP_ROLE?.trim()
+  || 'InteractionHistory.Read';
 
 export const ApiOperation = Object.freeze({
   AGENT_INVOKE: 'agent_invoke',
@@ -25,6 +28,22 @@ const operationScopes = {
   [ApiOperation.DEMAND_DRIVER_ANALYTICS_READ]: persistenceScope,
   [ApiOperation.VULNERABILITY_ANALYTICS_READ]: persistenceScope,
 };
+
+const operationRoles = {
+  [ApiOperation.AGENT_INVOKE]: agentInvokeAppRole,
+  [ApiOperation.INTERACTION_HISTORY_READ]: interactionHistoryReadAppRole,
+  [ApiOperation.PCR_ANALYTICS_READ]: interactionHistoryReadAppRole,
+  [ApiOperation.DEMAND_DRIVER_ANALYTICS_READ]: interactionHistoryReadAppRole,
+  [ApiOperation.VULNERABILITY_ANALYTICS_READ]: interactionHistoryReadAppRole,
+};
+
+export class AuthorizationError extends Error {
+  constructor(operation) {
+    super('Your account does not have permission for this operation.');
+    this.name = 'AuthorizationError';
+    this.operation = operation;
+  }
+}
 
 export const isEntraConfigured = Boolean(
   clientId && tenantId && persistenceScope && hostedAgentScope,
@@ -109,7 +128,26 @@ export async function getAuthorizationHeaders(operation) {
   if (!scope) {
     throw new Error(`No authorization policy is configured for operation "${operation}".`);
   }
-  return { Authorization: `Bearer ${await acquireToken(scope)}` };
+  const accessToken = await acquireToken(scope);
+  if (!hasRequiredRole(accessToken, operationRoles[operation])) {
+    throw new AuthorizationError(operation);
+  }
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+export async function getAuthorizedOperations() {
+  const operations = await Promise.all(
+    Object.values(ApiOperation).map(async (operation) => {
+      try {
+        await getAuthorizationHeaders(operation);
+        return operation;
+      } catch (error) {
+        if (error instanceof AuthorizationError) return null;
+        throw error;
+      }
+    }),
+  );
+  return new Set(operations.filter(Boolean));
 }
 
 async function acquireToken(scope) {
@@ -144,5 +182,21 @@ async function acquireToken(scope) {
         return response.accessToken;
       }
     });
+  }
+}
+
+function hasRequiredRole(accessToken, requiredRole) {
+  try {
+    const [, encodedClaims] = accessToken.split('.');
+    if (!encodedClaims) return false;
+    const normalizedClaims = encodedClaims.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedClaims = normalizedClaims.padEnd(
+      normalizedClaims.length + ((4 - (normalizedClaims.length % 4)) % 4),
+      '=',
+    );
+    const claims = JSON.parse(atob(paddedClaims));
+    return Array.isArray(claims.roles) && claims.roles.includes(requiredRole);
+  } catch {
+    return false;
   }
 }

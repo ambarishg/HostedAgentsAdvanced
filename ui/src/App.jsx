@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ApiOperation,
   entraConfigurationKeys,
+  getAuthorizedOperations,
   getAuthorizationHeaders,
   initializeEntra,
   isEntraConfigured,
@@ -19,6 +20,14 @@ const defaultHistoryUrl = import.meta.env.VITE_PERSISTENCE_HISTORY_URL || '/api/
 const defaultAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_ANALYTICS_URL || '/api/pcr-analytics';
 const defaultDemandDriverAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_DEMAND_DRIVER_ANALYTICS_URL || '/api/demand-driver-analytics';
 const defaultVulnerabilityAnalyticsUrl = import.meta.env.VITE_PERSISTENCE_VULNERABILITY_ANALYTICS_URL || '/api/vulnerability-analytics';
+const pageOperations = {
+  home: ApiOperation.AGENT_INVOKE,
+  batch: ApiOperation.AGENT_INVOKE,
+  interactions: ApiOperation.INTERACTION_HISTORY_READ,
+  'pcr-analytics': ApiOperation.PCR_ANALYTICS_READ,
+  'demand-driver-analytics': ApiOperation.DEMAND_DRIVER_ANALYTICS_READ,
+  'vulnerability-analytics': ApiOperation.VULNERABILITY_ANALYTICS_READ,
+};
 
 const createRequestBody = (userInput, requestId, batchMode) => ({
   request_id: requestId,
@@ -62,6 +71,8 @@ function App() {
   const [page, setPage] = useState('home');
   const [authAccount, setAuthAccount] = useState(null);
   const [authReady, setAuthReady] = useState(!isEntraConfigured);
+  const [authorizationReady, setAuthorizationReady] = useState(!isEntraConfigured);
+  const [authorizedOperations, setAuthorizedOperations] = useState(new Set());
   const [isAuthBusy, setIsAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
   const [signOutMessage, setSignOutMessage] = useState('');
@@ -133,11 +144,44 @@ function App() {
     return filtered;
   }, [interactions, interactionSearch, agentFilter, interactionSort]);
 
+  const isOperationAuthorized = (operation) => authorizedOperations.has(operation);
+  const isPageAuthorized = (targetPage) => isOperationAuthorized(pageOperations[targetPage]);
+  const defaultAuthorizedPage = (operations) => (
+    operations.has(ApiOperation.AGENT_INVOKE) ? 'home' : 'interactions'
+  );
+
+  const authorizeAccount = async () => {
+    setAuthorizationReady(false);
+    try {
+      const operations = await getAuthorizedOperations();
+      setAuthorizedOperations(operations);
+      if (operations.size === 0) {
+        setAuthError('Your account does not have permission to access Voice Analytics.');
+      }
+      return operations;
+    } catch (authorizationError) {
+      setAuthorizedOperations(new Set());
+      setAuthError(
+        authorizationError.message || 'Unable to verify your account permissions.',
+      );
+      return new Set();
+    } finally {
+      setAuthorizationReady(true);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     initializeEntra()
-      .then((account) => {
-        if (isMounted) setAuthAccount(account);
+      .then(async (account) => {
+        if (!isMounted) return;
+        setAuthAccount(account);
+        if (account) {
+          const operations = await authorizeAccount();
+          if (isMounted) setPage(defaultAuthorizedPage(operations));
+        } else if (isMounted) {
+          setAuthorizationReady(true);
+        }
       })
       .catch((initializationError) => {
         if (isMounted) setAuthError(initializationError.message || 'Unable to initialize Microsoft sign-in.');
@@ -192,6 +236,7 @@ function App() {
   };
 
   const openInteractions = () => {
+    if (!isOperationAuthorized(ApiOperation.INTERACTION_HISTORY_READ)) return;
     setPage('interactions');
     setIsMobileNavigationOpen(false);
     if (authAccount) loadInteractions();
@@ -243,6 +288,7 @@ function App() {
   };
 
   const openPcrAnalytics = () => {
+    if (!isOperationAuthorized(ApiOperation.PCR_ANALYTICS_READ)) return;
     setPage('pcr-analytics');
     if (authAccount) loadPcrAnalytics();
   };
@@ -293,6 +339,7 @@ function App() {
   };
 
   const openDemandDriverAnalytics = () => {
+    if (!isOperationAuthorized(ApiOperation.DEMAND_DRIVER_ANALYTICS_READ)) return;
     setPage('demand-driver-analytics');
     if (authAccount) loadDemandDriverAnalytics();
   };
@@ -347,6 +394,7 @@ function App() {
   };
 
   const openVulnerabilityAnalytics = () => {
+    if (!isOperationAuthorized(ApiOperation.VULNERABILITY_ANALYTICS_READ)) return;
     setPage('vulnerability-analytics');
     if (authAccount) loadVulnerabilityAnalytics();
   };
@@ -358,10 +406,10 @@ function App() {
     try {
       const account = await signInToEntra();
       setAuthAccount(account);
-      if (page === 'interactions') await loadInteractions(0, false, true);
-      if (page === 'pcr-analytics') await loadPcrAnalytics(true);
-      if (page === 'demand-driver-analytics') await loadDemandDriverAnalytics(true);
-      if (page === 'vulnerability-analytics') await loadVulnerabilityAnalytics(true);
+      const operations = await authorizeAccount();
+      if (operations.size > 0) {
+        setPage(defaultAuthorizedPage(operations));
+      }
     } catch (signInError) {
       setAuthError(signInError.message || 'Unable to sign in with Microsoft.');
     } finally {
@@ -375,6 +423,8 @@ function App() {
     try {
       await signOutOfEntra();
       setAuthAccount(null);
+      setAuthorizedOperations(new Set());
+      setAuthorizationReady(true);
       setPage('home');
       setUserInput('');
       setStatus('idle');
@@ -466,19 +516,27 @@ function App() {
   const isAgentInteractionPage = ['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page);
   const isInteractionNavigationActive = isAgentInteractionPage;
   const navigateTo = (targetPage) => {
+    if (!isPageAuthorized(targetPage)) {
+      setAuthError('Your account does not have permission to access that page.');
+      return;
+    }
     setPage(targetPage);
     setIsMobileNavigationOpen(false);
   };
 
-  if (!isEntraConfigured || !authReady || !authAccount) {
+  if (!isEntraConfigured || !authReady || !authAccount || !authorizationReady || authorizedOperations.size === 0) {
     return (
       <AuthenticationGate
         authError={authError}
         authReady={authReady}
+        authorizationReady={authorizationReady}
         isAuthBusy={isAuthBusy}
+        isAuthenticated={Boolean(authAccount)}
+        isAuthorized={authorizedOperations.size > 0}
         isConfigured={isEntraConfigured}
         missingConfigurationKeys={entraConfigurationKeys}
         onSignIn={handleSignIn}
+        onSignOut={handleSignOut}
         signOutMessage={signOutMessage}
       />
     );
@@ -488,6 +546,8 @@ function App() {
     <div className="app-shell">
       <AppHeader
         account={authAccount}
+        canInvokeAgent={isOperationAuthorized(ApiOperation.AGENT_INVOKE)}
+        canReadInteractions={isOperationAuthorized(ApiOperation.INTERACTION_HISTORY_READ)}
         agentUrl={agentUrl}
         analyticsUrl={analyticsUrl}
         demandDriverAnalyticsUrl={demandDriverAnalyticsUrl}
@@ -510,7 +570,7 @@ function App() {
 
       <main className={`main-panel${isAgentInteractionPage ? ' main-panel--wide' : ''}`}>
         {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
-        {page === 'home' && (
+        {page === 'home' && isPageAuthorized('home') && (
           <HomePage
             error={error}
             isLoading={isLoading}
@@ -518,6 +578,7 @@ function App() {
             message={message}
             onNavigate={navigateTo}
             onOpenInteractions={openInteractions}
+            canReadInteractions={isOperationAuthorized(ApiOperation.INTERACTION_HISTORY_READ)}
             onSubmit={handleSubmit}
             result={result}
             setUserInput={setUserInput}
@@ -526,7 +587,7 @@ function App() {
           />
         )}
 
-        {page === 'batch' && (
+        {page === 'batch' && isPageAuthorized('batch') && (
           <BatchPage
             error={error}
             isLoading={isLoading}
@@ -538,7 +599,7 @@ function App() {
           />
         )}
 
-        {page === 'interactions' && (
+        {page === 'interactions' && isPageAuthorized('interactions') && (
           <section className="page-content interaction-page interaction-page--history">
             <AgentInteractionNavigation
               page={page}
@@ -704,7 +765,7 @@ function App() {
             )}
           </section>
         )}
-        {page === 'pcr-analytics' && (
+        {page === 'pcr-analytics' && isPageAuthorized('pcr-analytics') && (
           <AnalyticsPage
             availableCategories={availableContactReasons}
             categoryLabel="Contact reasons"
@@ -737,7 +798,7 @@ function App() {
           />
         )}
 
-        {page === 'demand-driver-analytics' && (
+        {page === 'demand-driver-analytics' && isPageAuthorized('demand-driver-analytics') && (
           <AnalyticsPage
             availableCategories={availableDemandDriverCategories}
             categoryLabel="Demand Driver Categories"
@@ -770,7 +831,7 @@ function App() {
           />
         )}
 
-        {page === 'vulnerability-analytics' && (
+        {page === 'vulnerability-analytics' && isPageAuthorized('vulnerability-analytics') && (
           <AnalyticsPage
             availableCategories={availableVulnerabilityCategories}
             categoryLabel="Vulnerability indicator categories"
