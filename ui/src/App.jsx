@@ -553,14 +553,41 @@ function App() {
       <main className={`main-panel${isAgentInteractionPage ? ' main-panel--wide' : ''}`}>
         {authError && !['interactions', 'pcr-analytics', 'demand-driver-analytics', 'vulnerability-analytics'].includes(page) && <p className="error-message" role="alert">{authError}</p>}
         {page === 'home' && (
-          <section className="page-content">
-            <div className="page-heading">
-              <p className="eyebrow">Voice Analytics</p>
-              <h1>Voice Analytics</h1>
-              <p>Submit a request, run a configured workload, or investigate agent activity.</p>
+          <section className="page-content home-page">
+            <div className="home-workspace">
+              <div className="request-workspace">
+                <div className="section-heading">
+                  <div>
+                    <p className="eyebrow">DIRECT REQUEST</p>
+                  </div>
+                </div>
+                <form className="request-form" onSubmit={handleSubmit}>
+                  <label htmlFor="user-input">Your request</label>
+                  <textarea
+                    id="user-input"
+                    value={userInput}
+                    onChange={(event) => setUserInput(event.target.value)}
+                    rows={6}
+                    placeholder="Describe the customer interaction, question, or outcome you need to review…"
+                  />
+                  <div className="form-footer">
+                    <span>Include the relevant context for the most useful result.</span>
+                    <button type="submit" disabled={isLoading}>
+                      {isLoading ? 'Working…' : 'Submit request'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <ResponsePanel
+                status={lastRunMode === 'request' ? status : 'idle'}
+                message={lastRunMode === 'request' ? message : 'Your agent is ready when you are.'}
+                error={lastRunMode === 'request' ? error : ''}
+                result={lastRunMode === 'request' ? result : null}
+              />
             </div>
 
-            <div className="workspace-shortcuts" aria-label="Workspace shortcuts">
+            <div className="workspace-shortcuts" aria-label="Additional workspace options">
               <button type="button" className="shortcut-card" onClick={() => navigateTo('batch')}>
                 <span className="shortcut-card__icon" aria-hidden="true">↗</span>
                 <span><strong>Batch processing</strong><small>Run a configured workload</small></span>
@@ -568,41 +595,10 @@ function App() {
               </button>
               <button type="button" className="shortcut-card" onClick={openInteractions}>
                 <span className="shortcut-card__icon shortcut-card__icon--blue" aria-hidden="true">≡</span>
-                <span><strong>Agent interactions</strong><small>Review requests and results</small></span>
+                <span><strong>Agent interactions</strong><small>Review previous requests and results</small></span>
                 <span className="shortcut-card__arrow" aria-hidden="true">→</span>
               </button>
             </div>
-
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">DIRECT REQUEST</p>
-                <h2>Send a request to your agent</h2>
-              </div>
-              <span className="section-heading__note">Request ID generated automatically</span>
-            </div>
-            <form className="request-form" onSubmit={handleSubmit}>
-              <label htmlFor="user-input">Your request</label>
-              <textarea
-                id="user-input"
-                value={userInput}
-                onChange={(event) => setUserInput(event.target.value)}
-                rows={6}
-                placeholder="Describe what you need…"
-              />
-              <div className="form-footer">
-                <span>Your request is sent to the configured hosted agent endpoint.</span>
-                <button type="submit" disabled={isLoading}>
-                  {isLoading ? 'Working…' : 'Submit request'}
-                </button>
-              </div>
-            </form>
-
-            <ResponsePanel
-              status={lastRunMode === 'request' ? status : 'idle'}
-              message={lastRunMode === 'request' ? message : 'Your agent is ready when you are.'}
-              error={lastRunMode === 'request' ? error : ''}
-              result={lastRunMode === 'request' ? result : null}
-            />
           </section>
         )}
 

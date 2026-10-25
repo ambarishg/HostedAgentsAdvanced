@@ -2033,6 +2033,37 @@ button[type='submit'] {
   background: linear-gradient(90deg, #16796f, #48a095);
 }
 
+.home-page {
+  gap: 20px;
+}
+
+.home-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.request-workspace {
+  display: grid;
+  gap: 13px;
+}
+
+.home-workspace .section-heading {
+  margin-top: 0;
+}
+
+.home-workspace .section-heading h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.home-workspace .response-panel {
+  min-height: 100%;
+}
+
 @media (max-width: 900px) {
   .site-header {
     gap: 20px;
@@ -2049,6 +2080,10 @@ button[type='submit'] {
 
   .clear-filters-button {
     justify-self: start;
+  }
+
+  .home-workspace {
+    grid-template-columns: 1fr;
   }
 }
 
