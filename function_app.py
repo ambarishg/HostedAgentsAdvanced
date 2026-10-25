@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date
-from functools import lru_cache
+from functools import lru_cache, wraps
 from typing import Any, get_args
 
 import azure.functions as func
@@ -57,21 +57,37 @@ def _authorization_service() -> AuthorizationService:
     return AuthorizationService(get_settings(), _token_validator())
 
 
-def _authorize(
-    req: func.HttpRequest, policy: AuthorizationPolicy
-) -> func.HttpResponse | None:
-    try:
-        _authorization_service().authorize(req.headers.get("Authorization"), policy)
-    except AuthenticationError as exc:
-        logger.warning(
-            "Persistence API rejected caller",
-            extra={"error_code": exc.code, "status_code": exc.status_code},
-        )
-        return _error(exc.code, "Caller authentication or authorization failed.", exc.status_code)
-    return None
+def requires_authorization(policy: AuthorizationPolicy):
+    """Apply a centralized authorization policy before executing a route handler."""
+
+    def decorator(handler):
+        @wraps(handler)
+        def wrapped(req: func.HttpRequest) -> func.HttpResponse:
+            try:
+                _authorization_service().authorize(req.headers.get("Authorization"), policy)
+            except (ValueError, OSError):
+                logger.exception(
+                    "Persistence API authorization configuration failed",
+                    extra={"error_code": "config_error"},
+                )
+                return _error("configuration_error", "Persistence API is not configured.", 500)
+            except AuthenticationError as exc:
+                logger.warning(
+                    "Persistence API rejected caller",
+                    extra={"error_code": exc.code, "status_code": exc.status_code},
+                )
+                return _error(
+                    exc.code, "Caller authentication or authorization failed.", exc.status_code
+                )
+            return handler(req)
+
+        return wrapped
+
+    return decorator
 
 
 @app.route(route="pcr-results", methods=["POST"])
+@requires_authorization(AuthorizationPolicy.PERSISTENCE_WRITE)
 def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
     try:
         settings: ApiSettings = get_settings()
@@ -80,10 +96,6 @@ def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
             "Persistence API configuration failed", extra={"error_code": "config_error"}
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
-
-    authorization_error = _authorize(req, AuthorizationPolicy.PERSISTENCE_WRITE)
-    if authorization_error:
-        return authorization_error
 
     body = req.get_body()
     if len(body) > settings.max_request_bytes:
@@ -121,6 +133,7 @@ def save_pcr_result(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="agent-interactions", methods=["GET"])
+@requires_authorization(AuthorizationPolicy.INTERACTION_HISTORY_READ)
 def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
     try:
         get_settings()
@@ -129,10 +142,6 @@ def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
             "Persistence API configuration failed", extra={"error_code": "config_error"}
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
-
-    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
-    if authorization_error:
-        return authorization_error
 
     try:
         limit = int(req.params.get("limit", "100"))
@@ -159,6 +168,7 @@ def list_agent_interactions(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="pcr-analytics", methods=["GET"])
+@requires_authorization(AuthorizationPolicy.INTERACTION_HISTORY_READ)
 def get_pcr_analytics(req: func.HttpRequest) -> func.HttpResponse:
     try:
         get_settings()
@@ -167,10 +177,6 @@ def get_pcr_analytics(req: func.HttpRequest) -> func.HttpResponse:
             "Persistence API configuration failed", extra={"error_code": "config_error"}
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
-
-    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
-    if authorization_error:
-        return authorization_error
 
     try:
         start_date = (
@@ -211,6 +217,7 @@ def get_pcr_analytics(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="demand-driver-analytics", methods=["GET"])
+@requires_authorization(AuthorizationPolicy.INTERACTION_HISTORY_READ)
 def get_demand_driver_analytics(req: func.HttpRequest) -> func.HttpResponse:
     try:
         get_settings()
@@ -219,10 +226,6 @@ def get_demand_driver_analytics(req: func.HttpRequest) -> func.HttpResponse:
             "Persistence API configuration failed", extra={"error_code": "config_error"}
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
-
-    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
-    if authorization_error:
-        return authorization_error
 
     try:
         start_date = (
@@ -267,6 +270,7 @@ def get_demand_driver_analytics(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="vulnerability-analytics", methods=["GET"])
+@requires_authorization(AuthorizationPolicy.INTERACTION_HISTORY_READ)
 def get_vulnerability_analytics(req: func.HttpRequest) -> func.HttpResponse:
     try:
         get_settings()
@@ -275,10 +279,6 @@ def get_vulnerability_analytics(req: func.HttpRequest) -> func.HttpResponse:
             "Persistence API configuration failed", extra={"error_code": "config_error"}
         )
         return _error("configuration_error", "Persistence API is not configured.", 500)
-
-    authorization_error = _authorize(req, AuthorizationPolicy.INTERACTION_HISTORY_READ)
-    if authorization_error:
-        return authorization_error
 
     try:
         start_date = (

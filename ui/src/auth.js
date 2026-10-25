@@ -10,6 +10,22 @@ const redirectUri = import.meta.env.VITE_ENTRA_REDIRECT_URI?.trim()
 const persistenceScope = import.meta.env.VITE_PERSISTENCE_API_SCOPE?.trim();
 const hostedAgentScope = import.meta.env.VITE_HOSTED_AGENT_SCOPE?.trim() || persistenceScope;
 
+export const ApiOperation = Object.freeze({
+  AGENT_INVOKE: 'agent_invoke',
+  INTERACTION_HISTORY_READ: 'interaction_history_read',
+  PCR_ANALYTICS_READ: 'pcr_analytics_read',
+  DEMAND_DRIVER_ANALYTICS_READ: 'demand_driver_analytics_read',
+  VULNERABILITY_ANALYTICS_READ: 'vulnerability_analytics_read',
+});
+
+const operationScopes = {
+  [ApiOperation.AGENT_INVOKE]: hostedAgentScope,
+  [ApiOperation.INTERACTION_HISTORY_READ]: persistenceScope,
+  [ApiOperation.PCR_ANALYTICS_READ]: persistenceScope,
+  [ApiOperation.DEMAND_DRIVER_ANALYTICS_READ]: persistenceScope,
+  [ApiOperation.VULNERABILITY_ANALYTICS_READ]: persistenceScope,
+};
+
 export const isEntraConfigured = Boolean(
   clientId && tenantId && persistenceScope && hostedAgentScope,
 );
@@ -64,13 +80,15 @@ export async function initializeEntra() {
 }
 
 export async function signInToEntra() {
-  if (!msalInstance || !persistenceScope) {
+  if (!msalInstance || !persistenceScope || !hostedAgentScope) {
     throw new Error('Entra sign-in is not configured for this UI.');
   }
 
   await initializeEntra();
   return withInteractiveLock(async () => {
-    const response = await msalInstance.loginPopup({ scopes: [persistenceScope] });
+    const response = await msalInstance.loginPopup({
+      scopes: [...new Set([persistenceScope, hostedAgentScope])],
+    });
     msalInstance.setActiveAccount(response.account);
     return response.account;
   });
@@ -86,12 +104,12 @@ export async function signOutOfEntra() {
   });
 }
 
-export async function acquirePersistenceToken() {
-  return acquireToken(persistenceScope);
-}
-
-export async function acquireHostedAgentToken() {
-  return acquireToken(hostedAgentScope);
+export async function getAuthorizationHeaders(operation) {
+  const scope = operationScopes[operation];
+  if (!scope) {
+    throw new Error(`No authorization policy is configured for operation "${operation}".`);
+  }
+  return { Authorization: `Bearer ${await acquireToken(scope)}` };
 }
 
 async function acquireToken(scope) {

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  acquireHostedAgentToken,
-  acquirePersistenceToken,
+  ApiOperation,
   entraConfigurationKeys,
+  getAuthorizationHeaders,
   initializeEntra,
   isEntraConfigured,
   signInToEntra,
@@ -170,9 +170,8 @@ function App() {
 
     try {
       const separator = historyUrl.includes('?') ? '&' : '?';
-      const token = await acquirePersistenceToken();
       const response = await fetch(`${historyUrl}${separator}limit=100&offset=${offset}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: await getAuthorizationHeaders(ApiOperation.INTERACTION_HISTORY_READ),
       });
       const rawText = await response.text();
       if (!response.ok) {
@@ -220,9 +219,8 @@ function App() {
         query.set('contact_reasons', selectedContactReasons.join(','));
       }
       const separator = analyticsUrl.includes('?') ? '&' : '?';
-      const token = await acquirePersistenceToken();
       const response = await fetch(`${analyticsUrl}${separator}${query.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: await getAuthorizationHeaders(ApiOperation.PCR_ANALYTICS_READ),
       });
       const rawText = await response.text();
       if (!response.ok) {
@@ -271,9 +269,8 @@ function App() {
         query.set('categories', selectedDemandDriverCategories.join(','));
       }
       const separator = demandDriverAnalyticsUrl.includes('?') ? '&' : '?';
-      const token = await acquirePersistenceToken();
       const response = await fetch(`${demandDriverAnalyticsUrl}${separator}${query.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: await getAuthorizationHeaders(ApiOperation.DEMAND_DRIVER_ANALYTICS_READ),
       });
       const rawText = await response.text();
       if (!response.ok) {
@@ -322,9 +319,8 @@ function App() {
         query.set('categories', selectedVulnerabilityCategories.join(','));
       }
       const separator = vulnerabilityAnalyticsUrl.includes('?') ? '&' : '?';
-      const token = await acquirePersistenceToken();
       const response = await fetch(`${vulnerabilityAnalyticsUrl}${separator}${query.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: await getAuthorizationHeaders(ApiOperation.VULNERABILITY_ANALYTICS_READ),
       });
       const rawText = await response.text();
       if (!response.ok) {
@@ -427,12 +423,11 @@ function App() {
     setResult(null);
 
     try {
-      const token = await acquireHostedAgentToken();
       const response = await fetch(agentUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          ...await getAuthorizationHeaders(ApiOperation.AGENT_INVOKE),
         },
         body: JSON.stringify(createRequestBody(trimmedInput, requestId, batchMode)),
       });
