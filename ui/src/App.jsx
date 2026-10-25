@@ -572,9 +572,7 @@ function App() {
                 </button>
               </div>
             </div>
-            <p className="loaded-records-note">
-              Counts reflect the records loaded here; the API does not provide a database-wide total.
-            </p>
+            
 
             {historyError && <p className="error-message" role="alert">{historyError}</p>}
             {authError && <p className="error-message" role="alert">{authError}</p>}
