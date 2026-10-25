@@ -55,6 +55,49 @@ button {
   min-height: 100vh;
 }
 
+.authentication-gate {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.authentication-gate__card {
+  width: min(100%, 480px);
+  padding: clamp(28px, 6vw, 48px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgb(24 43 52 / 12%);
+}
+
+.authentication-gate__eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.authentication-gate__card h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.authentication-gate__card > p:not(.authentication-gate__eyebrow, .error-message) {
+  margin: 16px 0 24px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sign-out-message {
+  margin: 16px 0;
+  color: var(--success);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 .site-header {
   position: relative;
   z-index: 1;

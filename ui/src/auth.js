@@ -77,9 +77,10 @@ export async function signOutOfEntra() {
   if (!msalInstance) return;
 
   const account = msalInstance.getActiveAccount();
-  await withInteractiveLock(
-    () => msalInstance.logoutPopup({ account, postLogoutRedirectUri: redirectUri }),
-  );
+  await withInteractiveLock(async () => {
+    await msalInstance.logoutPopup({ account, postLogoutRedirectUri: redirectUri });
+    msalInstance.setActiveAccount(null);
+  });
 }
 
 export async function acquirePersistenceToken() {

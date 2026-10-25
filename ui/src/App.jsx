@@ -58,6 +58,7 @@ function App() {
   const [authReady, setAuthReady] = useState(!isEntraConfigured);
   const [isAuthBusy, setIsAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [signOutMessage, setSignOutMessage] = useState('');
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('Your agent is ready when you are.');
   const [lastRunMode, setLastRunMode] = useState('request');
@@ -351,6 +352,7 @@ function App() {
   const handleSignIn = async () => {
     setIsAuthBusy(true);
     setAuthError('');
+    setSignOutMessage('');
     try {
       const account = await signInToEntra();
       setAuthAccount(account);
@@ -371,15 +373,26 @@ function App() {
     try {
       await signOutOfEntra();
       setAuthAccount(null);
+      setPage('home');
+      setUserInput('');
+      setStatus('idle');
+      setMessage('Your agent is ready when you are.');
+      setResult(null);
+      setError('');
       setInteractions([]);
+      setHistoryError('');
       setHasMoreInteractions(false);
       setAnalytics([]);
       setAnalyticsTotal(0);
+      setAnalyticsError('');
       setDemandDriverAnalytics([]);
       setDemandDriverAnalyticsTotal(0);
       setAvailableDemandDriverCategories([]);
+      setDemandDriverAnalyticsError('');
       setVulnerabilityAnalytics([]);
       setVulnerabilityAnalyticsTotal(0);
+      setVulnerabilityAnalyticsError('');
+      setSignOutMessage('You have been signed out of Voice Analytics and Microsoft Entra ID.');
     } catch (signOutError) {
       setAuthError(signOutError.message || 'Unable to sign out.');
     } finally {
@@ -452,6 +465,54 @@ function App() {
     setIsMobileNavigationOpen(false);
   };
 
+  if (!isEntraConfigured) {
+    return (
+      <main className="authentication-gate" aria-labelledby="authentication-gate-title">
+        <section className="authentication-gate__card">
+          <p className="authentication-gate__eyebrow">Authentication required</p>
+          <h1 id="authentication-gate-title">Entra ID sign-in is not configured</h1>
+          <p>
+            Configure {entraConfigurationKeys.join(', ')} before users can access this
+            application.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!authReady) {
+    return (
+      <main className="authentication-gate" aria-live="polite">
+        <section className="authentication-gate__card">
+          <p className="authentication-gate__eyebrow">Authentication required</p>
+          <h1>Checking your Microsoft sign-in</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (!authAccount) {
+    return (
+      <main className="authentication-gate" aria-labelledby="authentication-gate-title">
+        <section className="authentication-gate__card">
+          <p className="authentication-gate__eyebrow">Authentication required</p>
+          <h1 id="authentication-gate-title">Sign in to access Voice Analytics</h1>
+          <p>Use your work account to access this application.</p>
+          {signOutMessage && <p className="sign-out-message" role="status">{signOutMessage}</p>}
+          {authError && <p className="error-message" role="alert">{authError}</p>}
+          <button
+            type="button"
+            className="auth-button"
+            onClick={handleSignIn}
+            disabled={isAuthBusy}
+          >
+            {isAuthBusy ? 'Signing in...' : 'Sign in with Microsoft'}
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="site-header">
@@ -504,21 +565,17 @@ function App() {
             Agent Interactions
           </button>
         </nav>
-        {isEntraConfigured && (
-          <div className="auth-controls">
-            {authAccount && <span className="signed-in-user">{authAccount.name || authAccount.username}</span>}
-            <button
-              type="button"
-              className={authAccount ? 'auth-button auth-button--quiet' : 'auth-button'}
-              onClick={authAccount ? handleSignOut : handleSignIn}
-              disabled={!authReady || isAuthBusy}
-            >
-              {!authReady || isAuthBusy
-                ? 'Please wait…'
-                : authAccount ? 'Sign out' : 'Sign in'}
-            </button>
-          </div>
-        )}
+        <div className="auth-controls">
+          <span className="signed-in-user">{authAccount.name || authAccount.username}</span>
+          <button
+            type="button"
+            className="auth-button auth-button--quiet"
+            onClick={handleSignOut}
+            disabled={isAuthBusy}
+          >
+            {isAuthBusy ? 'Please wait…' : 'Sign out'}
+          </button>
+        </div>
         <details className="settings">
           <summary>Settings</summary>
           <div className="settings-panel">
